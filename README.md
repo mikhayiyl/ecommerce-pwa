@@ -1,36 +1,91 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Ecommerce PWA
 
-## Getting Started
+A Next.js and TypeScript e-commerce PWA, developed feature by feature. This
+repository is the new project; `issue-tracker-main` is a separate reference for
+Next.js implementation patterns. The image at `../design.jpeg` is a visual
+reference for the storefront, not a functional specification.
 
-First, run the development server:
+## Current status
+
+The project currently contains the Next.js foundation only. The database,
+authentication, product catalog, checkout, PWA behavior, and AI features will
+be added and tested in separate milestones. Their credentials are not needed
+to run the current starter page.
+
+## Requirements
+
+- Node.js (LTS recommended)
+- npm
+
+## Local setup
+
+1. Install dependencies:
+
+   ```bash
+   npm install
+   ```
+
+2. Copy `.env.example` to `.env` and fill in the values described below. The
+   `.env` file is local and must never be committed.
+
+3. Run the development server:
+
+   ```bash
+   npm run dev
+   ```
+
+4. Open [http://localhost:3000](http://localhost:3000).
+
+Useful project checks:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run lint
+npm run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Environment variables
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The `.env.example` file lists the planned database and authentication settings.
+They are placeholders at this stage; no database or authentication code is
+configured yet.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Variable | What to provide | When needed |
+| --- | --- | --- |
+| `DATABASE_URL` | A PostgreSQL connection URL from the selected database host. Keep its username and password private. | Database/Prisma milestone |
+| `NEXTAUTH_URL` | The app's base URL. Use `http://localhost:3000` locally and the deployed HTTPS URL in production. | Authentication milestone |
+| `NEXTAUTH_SECRET` | A strong, private random secret. Generate one with `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"`. | Authentication milestone |
+| `GOOGLE_CLIENT_ID` | The OAuth client ID for a Google OAuth web application. | Google sign-in milestone |
+| `GOOGLE_CLIENT_SECRET` | The matching OAuth client secret. Do not share or commit it. | Google sign-in milestone |
 
-## Learn More
+For Google sign-in, configure the OAuth consent screen and a web application
+client in Google Cloud Console. Add `http://localhost:3000` as an authorized
+JavaScript origin and `http://localhost:3000/api/auth/callback/google` as an
+authorized redirect URI. Add the corresponding production origin and callback
+when deploying. Keep all credentials in `.env` locally and in the hosting
+provider's encrypted environment-variable settings in production.
 
-To learn more about Next.js, take a look at the following resources:
+Only set up a PostgreSQL database and OAuth credentials when we reach those
+milestones. Stripe, image-storage, and AI-provider keys will be documented when
+we select and implement those integrations; none are required yet.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Product images
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The design image is only a visual guide. The current starter does not contain
+product listings or product imagery. When we build the catalog, we will use
+real product photos that we own, have permission to use, or obtain from a
+licensed image source, and store/optimize them with the selected image service.
+We will configure Next.js image domains for that service as part of the same
+milestone rather than using emoji or invented images as product photos.
 
-## Deploy on Vercel
+## Planned milestones
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Features will be implemented, checked, and committed in focused milestones:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Project foundation and configuration.
+2. Storefront shell and responsive navigation.
+3. Product catalog, categories, and real product imagery.
+4. Cart, customer accounts, and checkout.
+5. Admin tools and inventory.
+6. PWA/offline behavior and AI shopping features.
+
+The order and scope can be adjusted as the project requirements are refined.
