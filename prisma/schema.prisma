@@ -12,6 +12,7 @@ model Category {
   name        String
   slug        String    @unique
   description String?
+  imageUrl    String?
   products    Product[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -27,6 +28,10 @@ model Product {
   stock       Int           @default(0)
   status      ProductStatus @default(DRAFT)
   imageUrl    String?
+  images      String[]
+  brand       String?
+  rating      Float         @default(0)
+  featured    Boolean       @default(false)
   categoryId  String
   category    Category      @relation(fields: [categoryId], references: [id])
   createdAt   DateTime      @default(now())
