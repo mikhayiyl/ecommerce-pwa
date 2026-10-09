@@ -24,6 +24,7 @@ model User {
   orders        Order[]
   reviews       Review[]
   wishlist      WishlistItem[]
+  addresses     Address[]
   disabled      Boolean   @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -220,4 +221,22 @@ enum ProductStatus {
   DRAFT
   ACTIVE
   ARCHIVED
+}
+
+model Address {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName  String
+  line1     String
+  line2     String?
+  city      String
+  state     String?
+  postalCode String
+  country   String
+  phone     String?
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
