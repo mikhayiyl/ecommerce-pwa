@@ -5,6 +5,7 @@ import ProductGallery from "@/components/products/ProductGallery";
 import AddToCartButton from "@/components/cart/AddToCartButton";
 import ProductGrid from "@/components/products/ProductGrid";
 import ProductReviews from "@/components/products/ProductReviews";
+import RecommendationSection from "@/components/ai/RecommendationSection";
 import WishlistButton from "@/components/products/WishlistButton";
 import { getProductBySlug, getRelatedProducts } from "@/features/products/queries";
 import { formatPrice } from "@/lib/utils";
@@ -90,6 +91,8 @@ async function ProductContent({ params }: PageProps<"/products/[slug]">) {
           <ProductGrid products={related} />
         </section>
       )}
+
+      <RecommendationSection currentProductId={product.id} />
     </div>
   );
 }

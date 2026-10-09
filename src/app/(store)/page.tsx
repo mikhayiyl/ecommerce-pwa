@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import ProductGrid from "@/components/products/ProductGrid";
+import RecommendationSection from "@/components/ai/RecommendationSection";
 import { getCategories, getFeaturedProducts } from "@/features/products/queries";
 
 export default async function HomePage() {
@@ -48,6 +49,8 @@ export default async function HomePage() {
         <h2 id="featured" className="mb-4 text-2xl font-semibold">Featured products</h2>
         <ProductGrid products={featured} />
       </section>
+
+      <RecommendationSection />
     </div>
   );
 }
