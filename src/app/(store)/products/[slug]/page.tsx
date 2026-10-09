@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import ProductGallery from "@/components/products/ProductGallery";
 import AddToCartButton from "@/components/cart/AddToCartButton";
 import ProductGrid from "@/components/products/ProductGrid";
+import ProductReviews from "@/components/products/ProductReviews";
 import WishlistButton from "@/components/products/WishlistButton";
 import { getProductBySlug, getRelatedProducts } from "@/features/products/queries";
 import { formatPrice } from "@/lib/utils";
@@ -57,6 +58,10 @@ async function ProductContent({ params }: PageProps<"/products/[slug]">) {
           </Suspense>
         </div>
       </div>
+
+      <Suspense fallback={<div className="h-40 animate-pulse rounded-xl bg-surface" />}>
+        <ProductReviews productId={product.id} slug={product.slug} />
+      </Suspense>
 
       {related.length > 0 && (
         <section aria-labelledby="related">
