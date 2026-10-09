@@ -82,3 +82,15 @@ export function removeFromCart(productId: string) {
 export function clearCart() {
   write([]);
 }
+
+export function replaceCart(items: CartItem[]) {
+  write(items);
+}
+
+export function getCartSnapshot() {
+  return read();
+}
+
+export function subscribeCart(cb: () => void) {
+  return subscribe(cb);
+}
