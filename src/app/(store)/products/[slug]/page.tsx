@@ -16,8 +16,28 @@ export async function generateMetadata({ params }: PageProps<"/products/[slug]">
   return {
     title: product.name,
     description: product.description.slice(0, 160),
-    openGraph: { images: product.imageUrl ? [product.imageUrl] : [] },
+    alternates: { canonical: `/products/${product.slug}` },
+    openGraph: { title: product.name, type: "website", images: product.imageUrl ? [product.imageUrl] : [] },
+    twitter: { card: "summary_large_image" },
   };
+}
+
+function ProductJsonLd({ product }: { product: NonNullable<Awaited<ReturnType<typeof getProductBySlug>>> }) {
+  const data = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: product.name,
+    description: product.description,
+    image: product.imageUrl ?? undefined,
+    brand: product.brand ? { "@type": "Brand", name: product.brand } : undefined,
+    offers: {
+      "@type": "Offer",
+      price: (product.priceCents / 100).toFixed(2),
+      priceCurrency: product.currency.toUpperCase(),
+      availability: product.stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+    },
+  };
+  return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(data).replace(/</g, "\\u003c") }} />;
 }
 
 async function ProductContent({ params }: PageProps<"/products/[slug]">) {
@@ -32,6 +52,7 @@ async function ProductContent({ params }: PageProps<"/products/[slug]">) {
 
   return (
     <div className="space-y-12">
+      <ProductJsonLd product={product} />
       <nav aria-label="Breadcrumb" className="text-sm text-muted">
         <Link href="/products" className="hover:text-accent">Shop</Link> /{" "}
         <Link href={`/categories/${product.category.slug}`} className="hover:text-accent">
