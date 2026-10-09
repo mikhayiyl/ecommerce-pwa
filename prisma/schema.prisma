@@ -23,6 +23,7 @@ model User {
   accounts      Account[]
   orders        Order[]
   reviews       Review[]
+  wishlist      WishlistItem[]
   disabled      Boolean   @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -85,11 +86,24 @@ model Product {
   orderItems        OrderItem[]
   reviews           Review[]
   movements         StockMovement[]
+  wishlistItems     WishlistItem[]
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
   @@index([categoryId])
   @@index([status])
+}
+
+model WishlistItem {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@index([userId])
 }
 
 enum OrderStatus {

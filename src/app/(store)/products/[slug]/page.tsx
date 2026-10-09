@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import ProductGallery from "@/components/products/ProductGallery";
 import AddToCartButton from "@/components/cart/AddToCartButton";
 import ProductGrid from "@/components/products/ProductGrid";
+import WishlistButton from "@/components/products/WishlistButton";
 import { getProductBySlug, getRelatedProducts } from "@/features/products/queries";
 import { formatPrice } from "@/lib/utils";
 
@@ -51,6 +52,9 @@ async function ProductContent({ params }: PageProps<"/products/[slug]">) {
           </p>
           <p className="leading-relaxed text-muted">{product.description}</p>
           <AddToCartButton productId={product.id} stock={product.stock} />
+          <Suspense fallback={<div className="h-12 w-48 animate-pulse rounded-lg bg-surface" />}>
+            <WishlistButton productId={product.id} slug={product.slug} />
+          </Suspense>
         </div>
       </div>
 
