@@ -51,7 +51,9 @@ configured yet.
 
 | Variable | What to provide | When needed |
 | --- | --- | --- |
-| `DATABASE_URL` | A PostgreSQL connection URL from the selected database host. Keep its username and password private. | Database/Prisma milestone |
+| `DATABASE_URL` | The pooled Neon PostgreSQL URL. Filled automatically by `neon link` / `neon deploy`; never commit it. | Database/Prisma milestone |
+| `DATABASE_URL_UNPOOLED` | The direct (non-pooled) Neon URL, useful for Prisma migrations. Also filled automatically. | Database/Prisma milestone |
+| `NEON_BRANCH` | The linked Neon branch (`production`). Filled automatically. | Neon CLI |
 | `NEXTAUTH_URL` | The app's base URL. Use `http://localhost:3000` locally and the deployed HTTPS URL in production. | Authentication milestone |
 | `NEXTAUTH_SECRET` | A strong, private random secret. Generate one with `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"`. | Authentication milestone |
 | `GOOGLE_CLIENT_ID` | The OAuth client ID for a Google OAuth web application. | Google sign-in milestone |
@@ -64,8 +66,23 @@ authorized redirect URI. Add the corresponding production origin and callback
 when deploying. Keep all credentials in `.env` locally and in the hosting
 provider's encrypted environment-variable settings in production.
 
-Only set up a PostgreSQL database and OAuth credentials when we reach those
-milestones. Stripe, image-storage, and AI-provider keys will be documented when
+## Neon database
+
+The project uses [Neon](https://neon.tech) PostgreSQL, linked to project
+`aged-block-08134795` on the `production` branch. To set it up on a new machine:
+
+```bash
+npm i -g neon@latest
+neon login
+neon link --project-id aged-block-08134795 --branch production -y
+neon deploy
+```
+
+`neon link` and `neon deploy` write `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, and
+`NEON_BRANCH` into `.env`. The Neon policy lives in `neon.ts`; `.neon/` is local
+link state and is git-ignored. Prisma and the schema are not set up yet.
+
+Only set up OAuth credentials when we reach the authentication milestone. Stripe, image-storage, and AI-provider keys will be documented when
 we select and implement those integrations; none are required yet.
 
 ## Product images
