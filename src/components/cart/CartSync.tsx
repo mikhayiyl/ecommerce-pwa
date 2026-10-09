@@ -46,7 +46,12 @@ export default function CartSync({ userId }: { userId: string | null }) {
       timer = setTimeout(() => void saveCartAction(getCartSnapshot()), 600);
     });
 
+    // Offline edits are saved locally; push them (server re-validates stock) when the connection returns.
+    const onOnline = () => void saveCartAction(getCartSnapshot());
+    window.addEventListener("online", onOnline);
+
     return () => {
+      window.removeEventListener("online", onOnline);
       cancelled = true;
       ready.current = false;
       clearTimeout(timer);
