@@ -10,7 +10,9 @@ async function Gate({ children }: { children: React.ReactNode }) {
 export default function AdminLayout({ children }: LayoutProps<"/admin">) {
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
-      <AdminSidebar />
+      <Suspense fallback={<aside className="md:w-56 md:shrink-0" />}>
+        <AdminSidebar />
+      </Suspense>
       <main className="min-w-0 flex-1 px-4 py-8 md:px-8">
         <Suspense fallback={<p className="text-muted">Loading…</p>}>
           <Gate>{children}</Gate>
