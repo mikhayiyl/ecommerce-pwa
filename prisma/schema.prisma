@@ -21,6 +21,9 @@ model User {
   passwordHash  String?
   role          Role      @default(CUSTOMER)
   accounts      Account[]
+  orders        Order[]
+  reviews       Review[]
+  disabled      Boolean   @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -63,26 +66,140 @@ model Category {
 }
 
 model Product {
-  id          String        @id @default(cuid())
-  name        String
-  slug        String        @unique
-  description String
-  priceCents  Int
-  currency    String        @default("usd")
-  stock       Int           @default(0)
-  status      ProductStatus @default(DRAFT)
-  imageUrl    String?
-  images      String[]
-  brand       String?
-  rating      Float         @default(0)
-  featured    Boolean       @default(false)
-  categoryId  String
-  category    Category      @relation(fields: [categoryId], references: [id])
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id                String          @id @default(cuid())
+  name              String
+  slug              String          @unique
+  description       String
+  priceCents        Int
+  currency          String          @default("usd")
+  stock             Int             @default(0)
+  status            ProductStatus   @default(DRAFT)
+  imageUrl          String?
+  images            String[]
+  brand             String?
+  rating            Float           @default(0)
+  featured          Boolean         @default(false)
+  lowStockThreshold Int             @default(5)
+  categoryId        String
+  category          Category        @relation(fields: [categoryId], references: [id])
+  orderItems        OrderItem[]
+  reviews           Review[]
+  movements         StockMovement[]
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
   @@index([categoryId])
   @@index([status])
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+  FAILED
+  REFUNDED
+}
+
+model Order {
+  id              String        @id @default(cuid())
+  number          Int           @unique @default(autoincrement())
+  userId          String?
+  user            User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  email           String
+  status          OrderStatus   @default(PENDING)
+  paymentStatus   PaymentStatus @default(UNPAID)
+  subtotalCents   Int
+  discountCents   Int           @default(0)
+  shippingCents   Int           @default(0)
+  taxCents        Int           @default(0)
+  totalCents      Int
+  couponCode      String?
+  shippingName    String?
+  shippingAddress String?
+  stripeSessionId String?       @unique
+  items           OrderItem[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id         String   @id @default(cuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId  String?
+  product    Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  name       String
+  priceCents Int
+  quantity   Int
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating    Int
+  comment   String
+  hidden    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@unique([productId, userId])
+  @@index([hidden])
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+model Discount {
+  id               String       @id @default(cuid())
+  code             String       @unique
+  type             DiscountType
+  value            Int
+  active           Boolean      @default(true)
+  expiresAt        DateTime?
+  usageLimit       Int?
+  usedCount        Int          @default(0)
+  minSubtotalCents Int          @default(0)
+  createdAt        DateTime     @default(now())
+}
+
+model StockMovement {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  delta     Int
+  reason    String
+  createdAt DateTime @default(now())
+
+  @@index([productId, createdAt])
+}
+
+model StoreSettings {
+  id                    String @id @default("store")
+  name                  String @default("ShopWave")
+  currency              String @default("usd")
+  shippingFlatCents     Int    @default(599)
+  freeShippingOverCents Int    @default(10000)
+  taxPercent            Float  @default(0)
 }
 
 enum ProductStatus {
