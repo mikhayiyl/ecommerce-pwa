@@ -98,7 +98,9 @@ milestone rather than using emoji or invented images as product photos.
 
 Features will be implemented, checked, and committed in focused milestones:
 
-1. Project foundation and configuration.
+1. Project foundation and configuration (done), including Prisma + Neon.
+   Run `npx prisma migrate dev` to apply migrations (uses `DATABASE_URL_UNPOOLED`)
+   and check the connection at `/api/health`.
 2. Storefront shell and responsive navigation.
 3. Product catalog, categories, and real product imagery.
 4. Cart, customer accounts, and checkout.
