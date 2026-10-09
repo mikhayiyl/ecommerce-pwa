@@ -10,6 +10,7 @@ import {
   paymentStatusFor,
   restocksOnTransition,
 } from "@/features/orders/status";
+import { releaseOrderReservation } from "@/features/orders/release";
 
 export type OrderState = { error?: string; success?: string };
 
@@ -25,24 +26,22 @@ export async function updateOrderStatusAction(
 
   try {
     await prisma.$transaction(async (tx) => {
-      const order = await tx.order.findUnique({ where: { id: orderId }, include: { items: true } });
+      const order = await tx.order.findUnique({ where: { id: orderId } });
       if (!order) throw new Error("Order not found");
       if (!canTransition(order.status, to)) {
         throw new Error(`Cannot change from ${order.status} to ${to}`);
       }
       await tx.order.update({
         where: { id: orderId },
-        data: { status: to, paymentStatus: paymentStatusFor(to, order.paymentStatus) },
+        data: {
+          status: to,
+          paymentStatus: paymentStatusFor(to, order.paymentStatus),
+          ...(to === "PAID" ? { paidAt: order.paidAt ?? new Date() } : {}),
+        },
       });
-      // Only paid orders reserved stock in the Stripe flow; pending ones never took it.
-      if (restocksOnTransition(to) && order.status !== "PENDING") {
-        for (const item of order.items) {
-          if (!item.productId) continue;
-          await tx.product.update({ where: { id: item.productId }, data: { stock: { increment: item.quantity } } });
-          await tx.stockMovement.create({
-            data: { productId: item.productId, delta: item.quantity, reason: `Order #${order.number} ${to.toLowerCase()}` },
-          });
-        }
+      // Stock is reserved when the order is placed, so even a cancelled PENDING order gives it back.
+      if (restocksOnTransition(to, order.status)) {
+        await releaseOrderReservation(tx, orderId, to.toLowerCase());
       }
     });
   } catch (e) {

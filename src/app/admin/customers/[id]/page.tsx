@@ -42,7 +42,7 @@ async function Content({ params }: PageProps<"/admin/customers/[id]">) {
               <tr key={o.id}>
                 <td className={td}><Link href={`/admin/orders/${o.id}`} className="hover:text-accent">#{o.number}</Link></td>
                 <td className={`${td} text-muted`}>{o.createdAt.toISOString().slice(0, 10)}</td>
-                <td className={td}>{formatPrice(o.totalCents)}</td>
+                <td className={td}>{formatPrice(o.totalCents, o.currency)}</td>
                 <td className={td}><Badge tone={statusTone[o.status]}>{o.status}</Badge></td>
               </tr>
             ))}

@@ -3,6 +3,7 @@ import { computeOrderTotals, resolveCoupon, DEFAULT_RULES } from "@/features/che
 import { checkoutSchema } from "@/lib/validations/checkout";
 
 const coupon = { code: "SAVE5", type: "FIXED" as const, value: 500, active: true, expiresAt: null, usageLimit: null, usedCount: 0, minSubtotalCents: 0 };
+const key = "attempt-12345678";
 const ship = { fullName: "A B", line1: "1 St", city: "Lagos", postalCode: "100001", country: "Nigeria" };
 
 describe("computeOrderTotals", () => {
@@ -31,14 +32,21 @@ describe("resolveCoupon", () => {
 
 describe("checkoutSchema", () => {
   it("normalises email and coupon", () => {
-    const r = checkoutSchema.parse({ email: " A@B.COM ", items: [{ productId: "x", quantity: 1 }], couponCode: "save5", shipping: ship });
+    const r = checkoutSchema.parse({ email: " A@B.COM ", items: [{ productId: "x", quantity: 1 }], couponCode: "save5", shipping: ship, idempotencyKey: key });
     expect(r.email).toBe("a@b.com");
     expect(r.couponCode).toBe("SAVE5");
   });
   it("rejects an empty cart and bad email", () => {
-    expect(checkoutSchema.safeParse({ email: "nope", items: [], shipping: ship }).success).toBe(false);
+    expect(checkoutSchema.safeParse({ email: "nope", items: [], shipping: ship, idempotencyKey: key }).success).toBe(false);
+  });
+  it("requires an idempotency key and accepts an expected total", () => {
+    const base = { email: "a@b.co", items: [{ productId: "x", quantity: 1 }], shipping: ship };
+    expect(checkoutSchema.safeParse(base).success).toBe(false);
+    expect(checkoutSchema.safeParse({ ...base, idempotencyKey: "short" }).success).toBe(false);
+    expect(checkoutSchema.parse({ ...base, idempotencyKey: key, expectedTotalCents: 1999 }).expectedTotalCents).toBe(1999);
+    expect(checkoutSchema.safeParse({ ...base, idempotencyKey: key, expectedTotalCents: -1 }).success).toBe(false);
   });
   it("treats a blank coupon as none", () => {
-    expect(checkoutSchema.parse({ email: "a@b.co", items: [{ productId: "x", quantity: 1 }], couponCode: "", shipping: ship }).couponCode).toBeUndefined();
+    expect(checkoutSchema.parse({ email: "a@b.co", items: [{ productId: "x", quantity: 1 }], couponCode: "", shipping: ship, idempotencyKey: key }).couponCode).toBeUndefined();
   });
 });

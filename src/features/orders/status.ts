@@ -33,9 +33,15 @@ export function paymentStatusFor(to: OrderStatusValue, current: "UNPAID" | "PAID
   return current;
 }
 
-// Orders that held stock and give it back when cancelled or refunded.
-export function restocksOnTransition(to: OrderStatusValue) {
-  return to === "CANCELLED" || to === "REFUNDED";
+/**
+ * Stock is reserved when an order is placed (even while it is still PENDING), so every cancellation
+ * gives it back. A refund only does so while the goods have not left the warehouse; once shipped
+ * they have to come back before anyone can restock them, which is a manual step.
+ */
+export function restocksOnTransition(to: OrderStatusValue, from?: OrderStatusValue) {
+  if (to === "CANCELLED") return true;
+  if (to === "REFUNDED") return from === undefined || from === "PAID" || from === "PROCESSING";
+  return false;
 }
 
 export const statusTone = {

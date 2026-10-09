@@ -43,7 +43,7 @@ export default async function OrdersPage() {
                 </div>
                 <div className="flex items-center gap-4">
                   <Badge tone={statusTone[o.status]}>{o.status}</Badge>
-                  <span className="font-semibold text-accent">{formatPrice(o.totalCents)}</span>
+                  <span className="font-semibold text-accent">{formatPrice(o.totalCents, o.currency)}</span>
                 </div>
               </Link>
             </li>

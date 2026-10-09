@@ -21,4 +21,14 @@ describe("order status transitions", () => {
     expect(restocksOnTransition("CANCELLED")).toBe(true);
     expect(restocksOnTransition("SHIPPED")).toBe(false);
   });
+  it("gives stock back on any cancellation, including unpaid orders", () => {
+    expect(restocksOnTransition("CANCELLED", "PENDING")).toBe(true);
+    expect(restocksOnTransition("CANCELLED", "PAID")).toBe(true);
+  });
+  it("restocks a refund only while the goods have not shipped", () => {
+    expect(restocksOnTransition("REFUNDED", "PAID")).toBe(true);
+    expect(restocksOnTransition("REFUNDED", "PROCESSING")).toBe(true);
+    expect(restocksOnTransition("REFUNDED", "SHIPPED")).toBe(false);
+    expect(restocksOnTransition("REFUNDED", "DELIVERED")).toBe(false);
+  });
 });
