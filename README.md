@@ -109,6 +109,10 @@ To make an account an admin, register it first and then run:
 npm run make-admin -- you@example.com
 ```
 
+## AI features
+
+Natural-language search (`/api/ai/search`), recommendations (`/api/ai/recommendations`) and the chat assistant (`/api/ai/chat`) work out of the box with rule-based logic. Set `GEMINI_API_KEY` (free key from https://aistudio.google.com/apikey) in `.env` to enable AI-written answers. Prices, stock and ratings always come from the database and are passed to the model as facts; the model is instructed never to invent them.
+
 ## Planned milestones
 
 Features are implemented, checked, and committed in focused milestones:
