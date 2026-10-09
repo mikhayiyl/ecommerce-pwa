@@ -94,17 +94,35 @@ licensed image source, and store/optimize them with the selected image service.
 We will configure Next.js image domains for that service as part of the same
 milestone rather than using emoji or invented images as product photos.
 
+## Authentication
+
+Auth.js (NextAuth v5) with email/password (bcrypt) and optional Google sign-in.
+`NEXTAUTH_URL` and `NEXTAUTH_SECRET` are required; Google sign-in is only shown
+when both `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set (create an OAuth
+web client in Google Cloud Console with the redirect URI
+`<NEXTAUTH_URL>/api/auth/callback/google`).
+
+Admin access is enforced on the server (`requireAdmin()` in `src/lib/security/guards.ts`).
+To make an account an admin, register it first and then run:
+
+```bash
+npm run make-admin -- you@example.com
+```
+
 ## Planned milestones
 
-Features will be implemented, checked, and committed in focused milestones:
+Features are implemented, checked, and committed in focused milestones:
 
-1. Project foundation and configuration (done), including Prisma + Neon.
-   Run `npx prisma migrate dev` to apply migrations (uses `DATABASE_URL_UNPOOLED`)
-   and check the connection at `/api/health`.
-2. Storefront shell and responsive navigation.
-3. Product catalog, categories, and real product imagery.
-4. Cart, customer accounts, and checkout.
-5. Admin tools and inventory.
-6. PWA/offline behavior and AI shopping features.
+1. Project foundation, Prisma + Neon (done).
+2. Storefront shell and homepage (done).
+3. Product catalog, categories, search and real product imagery (done).
+4. Guest cart with server-side validation (done).
+5. Authentication and role-based access (done). Email verification and
+   password reset will be added once an email provider is chosen.
+6. Checkout, Stripe and orders.
+7. Reviews, wishlist and discounts.
+8. Admin tools and inventory.
+9. PWA/offline behavior and AI shopping features.
+10. SEO, e2e tests and deployment.
 
 The order and scope can be adjusted as the project requirements are refined.

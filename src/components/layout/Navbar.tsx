@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import Link from "next/link";
+import UserMenu from "@/components/layout/UserMenu";
 import CartLink from "@/components/cart/CartLink";
 
 const links = [
@@ -21,6 +23,9 @@ export default function Navbar() {
             </Link>
           ))}
           <CartLink />
+          <Suspense fallback={<span className="w-14" />}>
+            <UserMenu />
+          </Suspense>
         </nav>
       </div>
     </header>
