@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { BarList, LineChart } from "@/components/charts/Charts";
 import { Badge, PageHeader, StatCard } from "@/components/admin/ui";
@@ -9,10 +10,15 @@ import { formatPrice } from "@/lib/utils";
 
 const RANGES = [7, 30, 90] as const;
 
+function daysAgo(days: number) {
+  return new Date(Date.now() - days * 86_400_000);
+}
+
 async function Content({ searchParams }: PageProps<"/admin/analytics">) {
   const sp = await searchParams;
+  await connection();
   const days = RANGES.find((r) => String(r) === sp.days) ?? 30;
-  const since = new Date(Date.now() - days * 86_400_000);
+  const since = daysAgo(days);
 
   const orders = await prisma.order.findMany({
     where: { createdAt: { gte: since } },
