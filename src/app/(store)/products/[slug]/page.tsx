@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import ProductGallery from "@/components/products/ProductGallery";
+import AddToCartButton from "@/components/cart/AddToCartButton";
 import ProductGrid from "@/components/products/ProductGrid";
 import { getProductBySlug, getRelatedProducts } from "@/features/products/queries";
 import { formatPrice } from "@/lib/utils";
@@ -49,6 +50,7 @@ async function ProductContent({ params }: PageProps<"/products/[slug]">) {
             {stockLabel}
           </p>
           <p className="leading-relaxed text-muted">{product.description}</p>
+          <AddToCartButton productId={product.id} stock={product.stock} />
         </div>
       </div>
 
