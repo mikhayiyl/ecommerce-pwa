@@ -18,7 +18,7 @@ const providers: Provider[] = [
       const user = await prisma.user.findUnique({
         where: { email: parsed.data.email },
       });
-      if (!user?.passwordHash) return null;
+      if (!user?.passwordHash || user.disabled) return null;
 
       const valid = await bcrypt.compare(
         parsed.data.password,
@@ -55,8 +55,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (token.id) {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.id as string },
-          select: { role: true },
+          select: { role: true, disabled: true },
         });
+        // Disabled accounts lose their session on the next request.
+        if (dbUser?.disabled) return null;
         token.role = dbUser?.role ?? "CUSTOMER";
       }
       return token;
