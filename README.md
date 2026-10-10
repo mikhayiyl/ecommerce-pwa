@@ -7,10 +7,10 @@ reference for the storefront, not a functional specification.
 
 ## Current status
 
-The project currently contains the Next.js foundation only. The database,
-authentication, product catalog, checkout, PWA behavior, and AI features will
-be added and tested in separate milestones. Their credentials are not needed
-to run the current starter page.
+Milestones 1-6 are built: storefront, catalog, cart, authentication, checkout
+with Paystack/M-Pesa payments and orders, plus the wishlist, reviews, discounts,
+admin tools and AI features. See "Planned milestones" below for what is left.
+A database and the credentials in `.env` are needed to run it.
 
 ## Requirements
 
@@ -45,9 +45,9 @@ npm run build
 
 ## Environment variables
 
-The `.env.example` file lists the planned database and authentication settings.
-They are placeholders at this stage; no database or authentication code is
-configured yet.
+The `.env.example` file lists every setting. The table below covers the database
+and authentication; the payment, cron and email settings are described in
+"Checkout and payments".
 
 | Variable | What to provide | When needed |
 | --- | --- | --- |
@@ -80,7 +80,7 @@ neon deploy
 
 `neon link` and `neon deploy` write `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, and
 `NEON_BRANCH` into `.env`. The Neon policy lives in `neon.ts`; `.neon/` is local
-link state and is git-ignored. Prisma and the schema are not set up yet.
+link state and is git-ignored. The schema lives in `prisma/schema.prisma` with migrations in `prisma/migrations`.
 
 Only set up OAuth credentials when we reach the authentication milestone. Stripe, image-storage, and AI-provider keys will be documented when
 we select and implement those integrations; none are required yet.
@@ -113,6 +113,37 @@ npm run make-admin -- you@example.com
 
 Natural-language search (`/api/ai/search`), recommendations (`/api/ai/recommendations`) and the chat assistant (`/api/ai/chat`) work out of the box with rule-based logic. Set `GEMINI_API_KEY` (free key from https://aistudio.google.com/apikey) in `.env` to enable AI-written answers. Prices, stock and ratings always come from the database and are passed to the model as facts; the model is instructed never to invent them.
 
+## Checkout and payments
+
+Placing an order reserves stock and holds it for 30 minutes while the customer pays. Payment is
+taken by **Paystack** (cards, bank, mobile money; hosted page) and/or **M-Pesa** (STK Push prompt on
+the customer's phone). A method is offered only when its keys are set; M-Pesa additionally requires
+the store currency to be `KES` (Admin > Settings).
+
+How it works:
+
+- `placeOrderAction` validates everything on the server, reserves stock atomically, and is idempotent
+  (a retried submit returns the same order). Signed-in customers' orders always use their account email.
+- `startPaymentAction` opens a `PaymentAttempt`, then either returns Paystack's payment page URL or sends
+  the M-Pesa prompt. The order page (`/checkout/success?order=ID`) polls `refreshPaymentAction`.
+- Payments are confirmed by webhooks, with the polling above as a backup. Both check that the amount and
+  currency match what we asked for before marking an order paid, and are safe to run more than once.
+  - Paystack: set the webhook URL to `<site>/api/webhooks/paystack` (signature verified with your secret key).
+  - M-Pesa: the callback URL is built from `MPESA_CALLBACK_SECRET`; it must be a public HTTPS site, so use
+    a tunnel such as ngrok when developing locally.
+- Unpaid orders expire: `GET /api/cron/expire-orders` with `Authorization: Bearer $CRON_SECRET` cancels
+  expired orders and returns their stock and coupon use. Call it every 5-10 minutes from your scheduler
+  (for Vercel Cron, set `CRON_SECRET` and add a cron entry for that path).
+- Cancelling an order (admin, or expiry) gives its stock and coupon use back exactly once. Refunds are
+  restocked only before the order ships.
+- If a customer pays after their order expired and the item sold out, the order stays cancelled but is
+  marked paid, the admin order page shows a refund warning, and `REFUND REQUIRED` is logged. Refunds
+  themselves are made in the Paystack or M-Pesa dashboard.
+- Guests can look an order up at `/orders/track` with the order number and checkout email.
+- Optional confirmation emails use Resend (`RESEND_API_KEY`, `EMAIL_FROM`).
+
+After pulling these changes run `npx prisma migrate deploy` (or `migrate dev`) to apply the payments migration.
+
 ## Planned milestones
 
 Features are implemented, checked, and committed in focused milestones:
@@ -123,7 +154,7 @@ Features are implemented, checked, and committed in focused milestones:
 4. Guest cart with server-side validation (done).
 5. Authentication and role-based access (done). Email verification and
    password reset will be added once an email provider is chosen.
-6. Checkout, Stripe and orders.
+6. Checkout, payments (Paystack and M-Pesa) and orders (done).
 7. Reviews, wishlist and discounts.
 8. Admin tools and inventory.
 9. PWA/offline behavior and AI shopping features.

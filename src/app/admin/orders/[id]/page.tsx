@@ -11,7 +11,7 @@ async function Content({ params }: PageProps<"/admin/orders/[id]">) {
   const { id } = await params;
   const order = await prisma.order.findUnique({
     where: { id },
-    include: { items: true, user: { select: { id: true, name: true } } },
+    include: { items: true, payments: { orderBy: { createdAt: "desc" } }, user: { select: { id: true, name: true } } },
   });
   if (!order) notFound();
 
@@ -42,18 +42,18 @@ async function Content({ params }: PageProps<"/admin/orders/[id]">) {
               {order.items.map((i) => (
                 <tr key={i.id}>
                   <td className={td}>{i.name}</td>
-                  <td className={td}>{formatPrice(i.priceCents)}</td>
+                  <td className={td}>{formatPrice(i.priceCents, order.currency)}</td>
                   <td className={td}>{i.quantity}</td>
-                  <td className={td}>{formatPrice(i.priceCents * i.quantity)}</td>
+                  <td className={td}>{formatPrice(i.priceCents * i.quantity, order.currency)}</td>
                 </tr>
               ))}
             </tbody>
           </DataTable>
           <dl className="ml-auto max-w-xs space-y-1 text-sm">
             {rows.map(([k, v]) => (
-              <div key={k} className="flex justify-between"><dt className="text-muted">{k}{k === "Discount" && order.couponCode ? ` (${order.couponCode})` : ""}</dt><dd>{formatPrice(v)}</dd></div>
+              <div key={k} className="flex justify-between"><dt className="text-muted">{k}{k === "Discount" && order.couponCode ? ` (${order.couponCode})` : ""}</dt><dd>{formatPrice(v, order.currency)}</dd></div>
             ))}
-            <div className="flex justify-between border-t border-border pt-1 font-semibold"><dt>Total</dt><dd>{formatPrice(order.totalCents)}</dd></div>
+            <div className="flex justify-between border-t border-border pt-1 font-semibold"><dt>Total</dt><dd>{formatPrice(order.totalCents, order.currency)}</dd></div>
           </dl>
         </div>
         <div className="space-y-6">
@@ -62,10 +62,27 @@ async function Content({ params }: PageProps<"/admin/orders/[id]">) {
             <OrderStatusForm orderId={order.id} options={allowedTransitions(order.status)} />
           </section>
           <section className="rounded-xl border border-border bg-surface p-4 text-sm">
+            <h2 className="mb-2 font-semibold">Payment</h2>
+            <p>{order.paymentProvider ?? "No online payment yet"}{order.paidAt ? ` · paid ${order.paidAt.toISOString().slice(0, 16).replace("T", " ")}` : ""}</p>
+            {order.paymentReceipt && <p className="text-muted">Receipt: {order.paymentReceipt}</p>}
+            {order.paymentStatus === "PAID" && (order.status === "CANCELLED" || order.status === "REFUNDED") && (
+              <p role="alert" className="mt-2 text-red-400">Paid but {order.status.toLowerCase()}: refund the customer from the payment provider&apos;s dashboard.</p>
+            )}
+            {order.status === "PENDING" && order.expiresAt && <p className="mt-2 text-muted">Stock held until {order.expiresAt.toISOString().slice(0, 16).replace("T", " ")} UTC</p>}
+            {order.payments.length > 0 && (
+              <ul className="mt-2 space-y-1 text-xs text-muted">
+                {order.payments.map((p) => (
+                  <li key={p.id}>{p.provider} · {p.status}{p.failureReason ? ` · ${p.failureReason}` : ""}</li>
+                ))}
+              </ul>
+            )}
+          </section>
+          <section className="rounded-xl border border-border bg-surface p-4 text-sm">
             <h2 className="mb-2 font-semibold">Customer</h2>
             <p>{order.shippingName ?? order.user?.name ?? "Guest"}</p>
             <p className="text-muted">{order.email}</p>
             {order.shippingAddress && <p className="mt-2 whitespace-pre-line text-muted">{order.shippingAddress}</p>}
+            {order.shippingPhone && <p className="text-muted">Tel: {order.shippingPhone}</p>}
             {order.user && <Link href={`/admin/customers/${order.user.id}`} className="mt-2 inline-block text-accent">View customer</Link>}
           </section>
         </div>

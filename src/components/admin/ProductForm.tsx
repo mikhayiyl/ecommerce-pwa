@@ -50,7 +50,7 @@ export default function ProductForm({ id, categories, product }: Props) {
           <textarea name="description" defaultValue={product?.description} rows={5} className={inputClass} required />
         </Field>
       </div>
-      <Field label="Price (USD)" error={e.price}>
+      <Field label="Price" error={e.price}>
         <input name="price" type="number" step="0.01" min="0.01" defaultValue={product ? (product.priceCents / 100).toFixed(2) : ""} className={inputClass} required />
       </Field>
       <Field label="Brand" error={e.brand}>

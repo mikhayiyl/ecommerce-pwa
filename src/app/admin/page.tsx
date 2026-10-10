@@ -57,7 +57,7 @@ export default async function AdminOverviewPage() {
                       <Link href={`/admin/orders/${r.id}`} className="hover:text-accent">#{r.number}</Link>
                     </td>
                     <td className={td}><Badge>{r.status}</Badge></td>
-                    <td className={td}>{formatPrice(r.totalCents)}</td>
+                    <td className={td}>{formatPrice(r.totalCents, r.currency)}</td>
                   </tr>
                 ))}
               </tbody>

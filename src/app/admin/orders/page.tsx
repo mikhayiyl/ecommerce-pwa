@@ -79,7 +79,7 @@ async function Content({ searchParams }: PageProps<"/admin/orders">) {
                 <td className={td}>{o.email}</td>
                 <td className={`${td} whitespace-nowrap text-muted`}>{o.createdAt.toISOString().slice(0, 10)}</td>
                 <td className={td}>{o._count.items}</td>
-                <td className={td}>{formatPrice(o.totalCents)}</td>
+                <td className={td}>{formatPrice(o.totalCents, o.currency)}</td>
                 <td className={td}><Badge tone={o.paymentStatus === "PAID" ? "green" : o.paymentStatus === "UNPAID" ? "yellow" : o.paymentStatus === "FAILED" ? "red" : "gray"}>{o.paymentStatus}</Badge></td>
                 <td className={td}><Badge tone={statusTone[o.status]}>{o.status}</Badge></td>
               </tr>

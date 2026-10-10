@@ -27,6 +27,10 @@ export const checkoutSchema = z.object({
     .transform((v) => (v ? v : undefined))
     .pipe(couponCodeSchema.optional()),
   shipping: addressSchema.omit({ isDefault: true }),
+  /** Random key per checkout attempt; a retried request returns the order it already created. */
+  idempotencyKey: z.string().trim().min(8).max(64),
+  /** The total the customer saw. If prices or shipping moved since, the order is refused instead of surprising them. */
+  expectedTotalCents: z.number().int().min(0).optional(),
 });
 
 export type CheckoutInput = z.infer<typeof checkoutSchema>;

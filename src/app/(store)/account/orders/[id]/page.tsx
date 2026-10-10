@@ -37,6 +37,12 @@ export default async function OrderDetailPage({ params }: PageProps<"/account/or
         <Badge tone={order.paymentStatus === "PAID" ? "green" : "gray"}>{order.paymentStatus}</Badge>
       </div>
       <p className="text-sm text-muted">Placed {order.createdAt.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}</p>
+      {order.status === "PENDING" && order.paymentStatus !== "PAID" && (
+        <p className="rounded-lg border border-amber-500/40 px-3 py-2 text-sm text-amber-400">
+          This order is waiting for payment.{" "}
+          <Link href={`/checkout/success?order=${order.id}`} className="font-semibold underline">Pay now</Link>
+        </p>
+      )}
 
       {stepIndex >= 0 ? (
         <ol aria-label="Order progress" className="grid grid-cols-4 gap-2 text-center text-xs">
@@ -54,7 +60,7 @@ export default async function OrderDetailPage({ params }: PageProps<"/account/or
         {order.items.map((it) => (
           <li key={it.id} className="flex justify-between gap-4 p-4 text-sm">
             <span>{it.name} <span className="text-muted">× {it.quantity}</span></span>
-            <span>{formatPrice(it.priceCents * it.quantity)}</span>
+            <span>{formatPrice(it.priceCents * it.quantity, order.currency)}</span>
           </li>
         ))}
       </ul>
@@ -63,12 +69,12 @@ export default async function OrderDetailPage({ params }: PageProps<"/account/or
         {rows.map(([label, cents]) => (
           <div key={label} className="flex justify-between text-muted">
             <span>{label}</span>
-            <span>{cents < 0 ? `-${formatPrice(-cents)}` : formatPrice(cents)}</span>
+            <span>{cents < 0 ? `-${formatPrice(-cents, order.currency)}` : formatPrice(cents, order.currency)}</span>
           </div>
         ))}
         <div className="flex justify-between border-t border-border pt-2 text-base font-semibold">
           <span>Total</span>
-          <span className="text-accent">{formatPrice(order.totalCents)}</span>
+          <span className="text-accent">{formatPrice(order.totalCents, order.currency)}</span>
         </div>
       </div>
 

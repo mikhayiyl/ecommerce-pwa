@@ -142,14 +142,58 @@ model Order {
   couponCode      String?
   shippingName    String?
   shippingAddress String?
-  stripeSessionId String?       @unique
+  shippingPhone   String?
+  // Unused since payments moved to PaymentAttempt; kept so this release's migration stays additive.
+  stripeSessionId String?         @unique
+  currency        String          @default("usd")
+  paymentProvider PaymentProvider?
+  paymentReceipt  String?
+  paidAt          DateTime?
+  // Unpaid orders hold stock until this time; a sweep then cancels them and releases it.
+  expiresAt       DateTime?
+  // Set once stock and the coupon use were given back, so a release can never run twice.
+  releasedAt      DateTime?
+  // Client-generated key that makes a retried "place order" return the same order.
+  idempotencyKey  String?         @unique
   items           OrderItem[]
+  payments        PaymentAttempt[]
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
   @@index([userId])
   @@index([status])
   @@index([createdAt])
+  @@index([status, expiresAt])
+}
+
+enum PaymentProvider {
+  PAYSTACK
+  MPESA
+}
+
+enum AttemptStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+model PaymentAttempt {
+  id            String          @id @default(cuid())
+  orderId       String
+  order         Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  provider      PaymentProvider
+  // Paystack: our reference. M-Pesa: the CheckoutRequestID returned by Safaricom.
+  reference     String          @unique
+  status        AttemptStatus   @default(PENDING)
+  // Expected charge in minor units of `currency`, checked against what the provider reports.
+  amountCents   Int
+  currency      String
+  receipt       String?
+  failureReason String?
+  createdAt     DateTime        @default(now())
+  resolvedAt    DateTime?
+
+  @@index([orderId, createdAt])
 }
 
 model OrderItem {
