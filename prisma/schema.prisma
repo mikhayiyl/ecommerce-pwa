@@ -143,6 +143,8 @@ model Order {
   shippingName    String?
   shippingAddress String?
   shippingPhone   String?
+  // Unused since payments moved to PaymentAttempt; kept so this release's migration stays additive.
+  stripeSessionId String?         @unique
   currency        String          @default("usd")
   paymentProvider PaymentProvider?
   paymentReceipt  String?

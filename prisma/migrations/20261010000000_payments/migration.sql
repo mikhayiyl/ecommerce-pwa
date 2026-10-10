@@ -4,12 +4,11 @@ CREATE TYPE "PaymentProvider" AS ENUM ('PAYSTACK', 'MPESA');
 -- CreateEnum
 CREATE TYPE "AttemptStatus" AS ENUM ('PENDING', 'SUCCESS', 'FAILED');
 
--- DropIndex
-DROP INDEX "Order_stripeSessionId_key";
-
 -- AlterTable
-ALTER TABLE "Order" DROP COLUMN "stripeSessionId",
-ADD COLUMN     "currency" TEXT NOT NULL DEFAULT 'usd',
+-- Purely additive on purpose: the code that is live while this runs keeps working, because every new
+-- column is nullable or has a default. The unused "stripeSessionId" column is left in place and can
+-- be dropped by a later migration once this release is live.
+ALTER TABLE "Order" ADD COLUMN     "currency" TEXT NOT NULL DEFAULT 'usd',
 ADD COLUMN     "expiresAt" TIMESTAMP(3),
 ADD COLUMN     "idempotencyKey" TEXT,
 ADD COLUMN     "paidAt" TIMESTAMP(3),
