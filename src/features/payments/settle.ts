@@ -1,5 +1,8 @@
 import { prisma } from "@/lib/prisma";
-import { StockUnavailableError, reReserveOrder } from "@/features/orders/release";
+import {
+  StockUnavailableError,
+  reReserveOrder,
+} from "@/features/orders/release";
 import { sendOrderConfirmation } from "@/features/orders/email";
 
 export type SettleResult =
@@ -18,9 +21,14 @@ export async function settleAttemptSuccess(input: {
   currency: string;
   receipt?: string | null;
 }): Promise<SettleResult> {
-  const attempt = await prisma.paymentAttempt.findUnique({ where: { reference: input.reference } });
+  const attempt = await prisma.paymentAttempt.findUnique({
+    where: { reference: input.reference },
+  });
   if (!attempt) return { ok: false, reason: "Unknown payment reference" };
-  if (attempt.amountCents !== input.amountCents || attempt.currency.toUpperCase() !== input.currency.toUpperCase()) {
+  if (
+    attempt.amountCents !== input.amountCents ||
+    attempt.currency.toUpperCase() !== input.currency.toUpperCase()
+  ) {
     return {
       ok: false,
       reason: `Amount mismatch for ${input.reference}: expected ${attempt.amountCents} ${attempt.currency}, got ${input.amountCents} ${input.currency}`,
@@ -33,11 +41,15 @@ export async function settleAttemptSuccess(input: {
     outcome = await prisma.$transaction(async (tx) => {
       const claimed = await tx.paymentAttempt.updateMany({
         where: { id: attempt.id, status: { in: ["PENDING", "FAILED"] } },
-        data: { status: "SUCCESS", receipt, failureReason: null, resolvedAt: new Date() },
+        data: {
+          status: "SUCCESS",
+          receipt,
+          failureReason: null,
+          resolvedAt: new Date(),
+        },
       });
       if (claimed.count === 0) return { changed: false, needsRefund: false }; // already settled
 
-      const order = await tx.order.findUniqueOrThrow({ where: { id: attempt.orderId } });
       const paid = {
         status: "PAID" as const,
         paymentStatus: "PAID" as const,
@@ -46,17 +58,45 @@ export async function settleAttemptSuccess(input: {
         paidAt: new Date(),
       };
 
-      if (order.status === "PENDING") {
-        await tx.order.update({ where: { id: order.id }, data: paid });
+      // Atomically claim a pending order. Only one attempt can change
+      // this order from PENDING to PAID.
+      const pendingClaim = await tx.order.updateMany({
+        where: {
+          id: attempt.orderId,
+          status: "PENDING",
+          paymentStatus: { not: "PAID" },
+        },
+        data: paid,
+      });
+
+      if (pendingClaim.count > 0) {
         return { changed: true, needsRefund: false };
       }
+
+      // Re-read the order because another transaction may have changed it.
+      const order = await tx.order.findUniqueOrThrow({
+        where: { id: attempt.orderId },
+      });
+
+      // A cancelled order may have had its stock reservation released.
+      // Claim the cancelled order atomically before re-reserving stock.
       if (order.status === "CANCELLED" && order.paymentStatus !== "PAID") {
-        // The order expired while the customer was paying: take the stock back if it is still there.
-        await reReserveOrder(tx, order.id);
-        await tx.order.update({ where: { id: order.id }, data: paid });
-        return { changed: true, needsRefund: false };
+        const cancelledClaim = await tx.order.updateMany({
+          where: {
+            id: order.id,
+            status: "CANCELLED",
+            paymentStatus: { not: "PAID" },
+          },
+          data: paid,
+        });
+
+        if (cancelledClaim.count > 0) {
+          await reReserveOrder(tx, order.id);
+          return { changed: true, needsRefund: false };
+        }
       }
-      // Already paid (a second payment) or refunded/shipped: keep the record and flag it for a refund.
+
+      // Another attempt paid the order, or the order is no longer payable.
       return { changed: false, needsRefund: true };
     });
   } catch (e) {
@@ -65,36 +105,68 @@ export async function settleAttemptSuccess(input: {
     await prisma.$transaction([
       prisma.paymentAttempt.updateMany({
         where: { id: attempt.id },
-        data: { status: "SUCCESS", receipt, resolvedAt: new Date(), failureReason: "Paid after expiry and out of stock: refund required" },
+        data: {
+          status: "SUCCESS",
+          receipt,
+          resolvedAt: new Date(),
+          failureReason: "Paid after expiry and out of stock: refund required",
+        },
       }),
       prisma.order.update({
         where: { id: attempt.orderId },
-        data: { paymentStatus: "PAID", paymentProvider: attempt.provider, paymentReceipt: receipt, paidAt: new Date() },
+        data: {
+          paymentStatus: "PAID",
+          paymentProvider: attempt.provider,
+          paymentReceipt: receipt,
+          paidAt: new Date(),
+        },
       }),
     ]);
-    console.error(`REFUND REQUIRED: order ${attempt.orderId} was paid (${input.reference}) after it expired and stock ran out`);
-    return { ok: true, orderId: attempt.orderId, changed: false, needsRefund: true };
+    console.error(
+      `REFUND REQUIRED: order ${attempt.orderId} was paid (${input.reference}) after it expired and stock ran out`,
+    );
+    return {
+      ok: true,
+      orderId: attempt.orderId,
+      changed: false,
+      needsRefund: true,
+    };
   }
 
   if (outcome.needsRefund) {
-    console.error(`REFUND REQUIRED: extra payment ${input.reference} for order ${attempt.orderId}`);
+    console.error(
+      `REFUND REQUIRED: extra payment ${input.reference} for order ${attempt.orderId}`,
+    );
   }
   if (outcome.changed) await sendOrderConfirmation(attempt.orderId);
   return { ok: true, orderId: attempt.orderId, ...outcome };
 }
 
 /** Records a failed or cancelled attempt so the customer can try again. Safe to call repeatedly. */
-export async function settleAttemptFailure(reference: string, reason: string): Promise<void> {
-  const attempt = await prisma.paymentAttempt.findUnique({ where: { reference } });
+export async function settleAttemptFailure(
+  reference: string,
+  reason: string,
+): Promise<void> {
+  const attempt = await prisma.paymentAttempt.findUnique({
+    where: { reference },
+  });
   if (!attempt) return;
   await prisma.$transaction(async (tx) => {
     const res = await tx.paymentAttempt.updateMany({
       where: { id: attempt.id, status: "PENDING" },
-      data: { status: "FAILED", failureReason: reason.slice(0, 200), resolvedAt: new Date() },
+      data: {
+        status: "FAILED",
+        failureReason: reason.slice(0, 200),
+        resolvedAt: new Date(),
+      },
     });
     if (res.count > 0) {
       await tx.order.updateMany({
-        where: { id: attempt.orderId, status: "PENDING", paymentStatus: "UNPAID" },
+        where: {
+          id: attempt.orderId,
+          status: "PENDING",
+          paymentStatus: "UNPAID",
+        },
         data: { paymentStatus: "FAILED" },
       });
     }

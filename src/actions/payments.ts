@@ -263,12 +263,13 @@ export async function refreshPaymentAction(
           const q = await stkQuery(attempt.reference);
 
           if (q.state === "success") {
-            await settleAttemptSuccess({
-              reference: attempt.reference,
-              amountCents: attempt.amountCents,
-              currency: attempt.currency,
-              receipt: null,
-            });
+            // STK query confirms the outcome but does not provide
+            // the actual amount needed for independent verification.
+            // Wait for the callback to verify the payment before settling.
+            console.info(
+              "M-Pesa query succeeded; awaiting callback verification",
+              attempt.reference,
+            );
           } else if (q.state === "failed") {
             await settleAttemptFailure(
               attempt.reference,
