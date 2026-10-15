@@ -24,6 +24,7 @@ export default function ProductCard({ product }: { product: ProductCardData }) {
           <Image
             src={product.imageUrl}
             alt={product.name}
+            loading="eager"
             fill
             sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
             className="object-contain p-4 transition group-hover:scale-105"
@@ -37,9 +38,13 @@ export default function ProductCard({ product }: { product: ProductCardData }) {
           <span className="font-semibold text-accent">
             {formatPrice(product.priceCents, product.currency)}
           </span>
-          <span className="text-xs text-muted">★ {product.rating.toFixed(1)}</span>
+          <span className="text-xs text-muted">
+            ★ {product.rating.toFixed(1)}
+          </span>
         </div>
-        {product.stock === 0 && <span className="text-xs text-red-400">Out of stock</span>}
+        {product.stock === 0 && (
+          <span className="text-xs text-red-400">Out of stock</span>
+        )}
       </div>
     </Link>
   );

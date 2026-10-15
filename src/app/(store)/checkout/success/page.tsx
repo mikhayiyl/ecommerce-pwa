@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { formatPrice } from "@/lib/utils";
 import PaymentPanel from "@/components/checkout/PaymentPanel";
 import { availableMethods } from "@/features/payments/methods";
+import { connection } from "next/server";
 
 export const metadata = { title: "Your order", robots: { index: false } };
 
@@ -19,6 +20,8 @@ async function Success({
 }: {
   searchParams: PageProps<"/checkout/success">["searchParams"];
 }) {
+  await connection();
+
   const { order: id, pay_error: payError } = await searchParams;
   const session = await auth();
   const order =

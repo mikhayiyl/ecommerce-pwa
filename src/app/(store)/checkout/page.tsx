@@ -2,16 +2,28 @@ import { Suspense } from "react";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import CheckoutForm from "@/components/checkout/CheckoutForm";
+import { connection } from "next/dist/server/web/exports";
 
 export const metadata = { title: "Checkout", robots: { index: false } };
 
 async function CheckoutContent() {
+  await connection();
+
   const session = await auth();
   const userId = session?.user?.id;
+
+  // Keep the rest of your existing code unchanged.
+
   const [addresses, user] = userId
     ? await Promise.all([
-        prisma.address.findMany({ where: { userId }, orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }] }),
-        prisma.user.findUnique({ where: { id: userId }, select: { email: true } }),
+        prisma.address.findMany({
+          where: { userId },
+          orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }],
+        }),
+        prisma.user.findUnique({
+          where: { id: userId },
+          select: { email: true },
+        }),
       ])
     : [[], null];
   return (
@@ -36,7 +48,14 @@ export default function CheckoutPage() {
   return (
     <>
       <h1 className="mb-6 text-3xl font-bold">Checkout</h1>
-      <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-surface" aria-busy="true" />}>
+      <Suspense
+        fallback={
+          <div
+            className="h-64 animate-pulse rounded-xl bg-surface"
+            aria-busy="true"
+          />
+        }
+      >
         <CheckoutContent />
       </Suspense>
     </>
