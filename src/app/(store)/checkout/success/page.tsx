@@ -6,6 +6,7 @@ import { formatPrice } from "@/lib/utils";
 import PaymentPanel from "@/components/checkout/PaymentPanel";
 import { availableMethods } from "@/features/payments/methods";
 import { connection } from "next/server";
+import GuestOrderClaimButton from "./guest-order-claim-button";
 
 export const metadata = { title: "Your order", robots: { index: false } };
 
@@ -125,6 +126,7 @@ async function Success({
           >
             Create an account
           </Link>
+          <GuestOrderClaimButton orderId={order.id} />
         </div>
       )}
       <Link

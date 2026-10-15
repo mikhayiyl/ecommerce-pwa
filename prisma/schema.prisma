@@ -134,6 +134,7 @@ model Order {
   email           String
   status          OrderStatus   @default(PENDING)
   paymentStatus   PaymentStatus @default(UNPAID)
+  guestOrderClaimTokens GuestOrderClaimToken[]
   subtotalCents   Int
   discountCents   Int           @default(0)
   shippingCents   Int           @default(0)
@@ -299,3 +300,24 @@ model CartItem {
 
   @@unique([userId, productId])
 }
+
+
+
+
+model GuestOrderClaimToken {
+  id         String    @id @default(cuid())
+  orderId    String
+  order      Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([orderId, expiresAt])
+}
+
+
+
+
+
+
