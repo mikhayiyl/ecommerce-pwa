@@ -112,6 +112,21 @@ async function Success({
           totalLabel={money(order.totalCents)}
         />
       )}
+      {!order.userId && (
+        <div className="rounded-lg border border-border bg-background p-4">
+          <h2 className="font-semibold">Make your next order easier</h2>
+          <p className="mt-1 text-sm text-muted">
+            Create an account to save your addresses and keep future orders in
+            one place. Guest checkout will always remain available.
+          </p>
+          <Link
+            href="/register"
+            className="mt-3 inline-flex rounded-lg border border-border px-4 py-2 text-sm font-semibold transition hover:border-accent"
+          >
+            Create an account
+          </Link>
+        </div>
+      )}
       <Link
         href="/products"
         className="inline-block rounded-lg bg-accent px-6 py-3 font-semibold text-background"

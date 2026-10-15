@@ -201,7 +201,14 @@ export default function CheckoutForm({
               <Link href="/login?callbackUrl=/checkout" className="text-accent">
                 Sign in
               </Link>{" "}
-              to use saved addresses. Already ordered?{" "}
+              to use saved addresses, or{" "}
+              <Link
+                href="/register?callbackUrl=/checkout"
+                className="text-accent"
+              >
+                create an account
+              </Link>{" "}
+              for faster checkout next time. Already ordered?{" "}
               <Link href="/orders/track" className="text-accent">
                 Track your order
               </Link>

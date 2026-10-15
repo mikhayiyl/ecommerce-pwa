@@ -10,9 +10,17 @@ export default async function UserMenu() {
 
   if (!user) {
     return (
-      <Link href="/login" className="transition hover:text-accent">
-        Sign in
-      </Link>
+      <div className="flex items-center gap-4">
+        <Link href="/login" className="transition hover:text-accent">
+          Sign in
+        </Link>
+        <Link
+          href="/register"
+          className="rounded-lg bg-accent px-3 py-2 font-semibold text-background transition hover:bg-accent-strong"
+        >
+          Create account
+        </Link>
+      </div>
     );
   }
 
