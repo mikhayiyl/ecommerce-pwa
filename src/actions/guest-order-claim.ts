@@ -56,11 +56,6 @@ export async function requestGuestOrderClaimAction(
 
         if (!order || order.userId !== null) return null;
 
-        // Replace earlier claim links for this order.
-        await tx.guestOrderClaimToken.deleteMany({
-          where: { orderId: order.id },
-        });
-
         await tx.guestOrderClaimToken.create({
           data: {
             orderId: order.id,
@@ -104,11 +99,20 @@ export async function requestGuestOrderClaimAction(
     });
 
     if (!emailAccepted) {
-      // Avoid exposing order eligibility through the action response.
-      // The generic response remains the same whether an order exists or not.
       console.error(
         "Guest order claim email was not accepted by the email provider",
       );
+
+      try {
+        await prisma.guestOrderClaimToken.deleteMany({
+          where: { tokenHash: tokenData.tokenHash },
+        });
+      } catch (cleanupError) {
+        console.error(
+          "Failed to clean up undelivered guest order claim token",
+          cleanupError,
+        );
+      }
     }
   } catch (error) {
     console.error("Guest order claim request failed", error);
