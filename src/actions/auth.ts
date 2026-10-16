@@ -13,7 +13,17 @@ export type AuthFormState = {
 
 function safeRedirect(url: FormDataEntryValue | null) {
   const value = typeof url === "string" ? url : "";
-  return value.startsWith("/") && !value.startsWith("//") ? value : "/account";
+
+  if (
+    !value.startsWith("/") ||
+    value.startsWith("//") ||
+    value.includes("\\") ||
+    /[\u0000-\u001F\u007F]/.test(value)
+  ) {
+    return "/account";
+  }
+
+  return value;
 }
 
 export async function loginAction(
@@ -71,6 +81,8 @@ export async function logoutAction() {
   await signOut({ redirectTo: "/" });
 }
 
-export async function googleSignInAction() {
-  await signIn("google", { redirectTo: "/account" });
+export async function googleSignInAction(formData: FormData) {
+  await signIn("google", {
+    redirectTo: safeRedirect(formData.get("callbackUrl")),
+  });
 }

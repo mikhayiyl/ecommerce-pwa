@@ -22,7 +22,9 @@ async function Content({ searchParams }: PageProps<"/login">) {
         mode="login"
         callbackUrl={typeof callbackUrl === "string" ? callbackUrl : undefined}
       />
-      <GoogleButton />
+      <GoogleButton
+        callbackUrl={typeof callbackUrl === "string" ? callbackUrl : undefined}
+      />
     </>
   );
 }

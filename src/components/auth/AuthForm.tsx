@@ -2,7 +2,11 @@
 
 import Link from "next/link";
 import { useActionState } from "react";
-import { loginAction, registerAction, type AuthFormState } from "@/actions/auth";
+import {
+  loginAction,
+  registerAction,
+  type AuthFormState,
+} from "@/actions/auth";
 
 const initial: AuthFormState = {};
 
@@ -64,9 +68,20 @@ export default function AuthForm({
     <form action={action} className="space-y-4">
       <input type="hidden" name="callbackUrl" value={callbackUrl ?? ""} />
       {!isLogin && (
-        <Field label="Full name" name="name" autoComplete="name" errors={fe.name} />
+        <Field
+          label="Full name"
+          name="name"
+          autoComplete="name"
+          errors={fe.name}
+        />
       )}
-      <Field label="Email" name="email" type="email" autoComplete="email" errors={fe.email} />
+      <Field
+        label="Email"
+        name="email"
+        type="email"
+        autoComplete="email"
+        errors={fe.email}
+      />
       <Field
         label="Password"
         name="password"
@@ -88,7 +103,13 @@ export default function AuthForm({
       <p className="text-center text-sm text-muted">
         {isLogin ? "New here? " : "Already registered? "}
         <Link
-          href={isLogin ? "/register" : "/login"}
+          href={
+            callbackUrl
+              ? `${isLogin ? "/register" : "/login"}?callbackUrl=${encodeURIComponent(callbackUrl)}`
+              : isLogin
+                ? "/register"
+                : "/login"
+          }
           className="text-accent hover:underline"
         >
           {isLogin ? "Create an account" : "Sign in"}

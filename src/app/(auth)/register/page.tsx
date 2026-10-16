@@ -17,12 +17,16 @@ async function Content({ searchParams }: PageProps<"/register">) {
   const { callbackUrl } = await searchParams;
   return (
     <>
-      <h1 className="mb-4 text-center text-lg font-semibold">Create your account</h1>
+      <h1 className="mb-4 text-center text-lg font-semibold">
+        Create your account
+      </h1>
       <AuthForm
         mode="register"
         callbackUrl={typeof callbackUrl === "string" ? callbackUrl : undefined}
       />
-      <GoogleButton />
+      <GoogleButton
+        callbackUrl={typeof callbackUrl === "string" ? callbackUrl : undefined}
+      />
     </>
   );
 }

@@ -39,14 +39,25 @@ export default async function ClaimOrderPage({ searchParams }: ClaimPageProps) {
               the claim.
             </p>
 
-            <Link
-              href={`/login?callbackUrl=${encodeURIComponent(
-                `/orders/claim?token=${encodeURIComponent(token)}`,
-              )}`}
-              className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-neutral-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800"
-            >
-              Sign in to continue
-            </Link>
+            <div className="mt-6 space-y-3">
+              <Link
+                href={`/login?callbackUrl=${encodeURIComponent(
+                  `/orders/claim?token=${encodeURIComponent(token)}`,
+                )}`}
+                className="inline-flex w-full items-center justify-center rounded-xl bg-neutral-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800"
+              >
+                Sign in to continue
+              </Link>
+
+              <Link
+                href={`/register?callbackUrl=${encodeURIComponent(
+                  `/orders/claim?token=${encodeURIComponent(token)}`,
+                )}`}
+                className="inline-flex w-full items-center justify-center rounded-xl border border-neutral-300 bg-white px-5 py-3 text-sm font-semibold text-neutral-900 transition hover:bg-neutral-50"
+              >
+                Create an account
+              </Link>
+            </div>
           </>
         ) : (
           <>
