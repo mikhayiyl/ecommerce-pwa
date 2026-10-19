@@ -95,8 +95,19 @@ export async function settleAttemptSuccess(input: {
           return { changed: true, needsRefund: false };
         }
       }
-
       // Another attempt paid the order, or the order is no longer payable.
+      // Persist the refund warning in the same transaction as the successful charge.
+      await tx.paymentAttempt.updateMany({
+        where: {
+          id: attempt.id,
+          status: "SUCCESS",
+        },
+        data: {
+          failureReason:
+            "Refund required: order was already paid or is no longer payable",
+        },
+      });
+
       return { changed: false, needsRefund: true };
     });
   } catch (e) {

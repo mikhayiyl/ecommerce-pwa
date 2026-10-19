@@ -130,6 +130,29 @@ describe("settleAttemptSuccess", () => {
       needsRefund: true,
     });
     expect(sendOrderConfirmationMock).not.toHaveBeenCalled();
+    expect(prismaMock.paymentAttempt.updateMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "SUCCESS",
+          failureReason: null,
+        }),
+      }),
+    );
+
+    expect(prismaMock.paymentAttempt.updateMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: attempt.id,
+          status: "SUCCESS",
+        }),
+        data: expect.objectContaining({
+          failureReason:
+            "Refund required: order was already paid or is no longer payable",
+        }),
+      }),
+    );
   });
 
   it("re-reserves stock when a cancelled order can still be paid", async () => {
