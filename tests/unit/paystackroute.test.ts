@@ -150,4 +150,59 @@ describe("Paystack webhook", () => {
     expect(response.status).toBe(200);
     expect(settleAttemptSuccess).not.toHaveBeenCalled();
   });
+
+  it("does not settle a charge with a non-numeric amount", async () => {
+    const response = await postEvent({
+      event: "charge.success",
+      data: {
+        ...successEvent.data,
+        amount: "not-a-number",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(settleAttemptSuccess).not.toHaveBeenCalled();
+  });
+
+  it("does not settle a charge with a missing amount", async () => {
+    const dataWithoutAmount = {
+      reference: successEvent.data.reference,
+      currency: successEvent.data.currency,
+      status: successEvent.data.status,
+      id: successEvent.data.id,
+    };
+    const response = await postEvent({
+      event: "charge.success",
+      data: dataWithoutAmount,
+    });
+
+    expect(response.status).toBe(200);
+    expect(settleAttemptSuccess).not.toHaveBeenCalled();
+  });
+
+  it("does not settle a charge with a non-string currency", async () => {
+    const response = await postEvent({
+      event: "charge.success",
+      data: {
+        ...successEvent.data,
+        currency: 123,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(settleAttemptSuccess).not.toHaveBeenCalled();
+  });
+
+  it("does not settle a charge with an empty reference", async () => {
+    const response = await postEvent({
+      event: "charge.success",
+      data: {
+        ...successEvent.data,
+        reference: "",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(settleAttemptSuccess).not.toHaveBeenCalled();
+  });
 });
