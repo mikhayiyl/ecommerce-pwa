@@ -31,14 +31,25 @@ export async function updateOrderStatusAction(
       if (!canTransition(order.status, to)) {
         throw new Error(`Cannot change from ${order.status} to ${to}`);
       }
-      await tx.order.update({
-        where: { id: orderId },
+      const updated = await tx.order.updateMany({
+        where: {
+          id: orderId,
+          status: order.status,
+          paymentStatus: order.paymentStatus,
+          releasedAt: order.releasedAt,
+        },
         data: {
           status: to,
           paymentStatus: paymentStatusFor(to, order.paymentStatus),
           ...(to === "PAID" ? { paidAt: order.paidAt ?? new Date() } : {}),
         },
       });
+
+      if (updated.count === 0) {
+        throw new Error(
+          "Order changed while you were updating it. Refresh and try again.",
+        );
+      }
       // Stock is reserved when the order is placed, so even a cancelled PENDING order gives it back.
       if (restocksOnTransition(to, order.status)) {
         await releaseOrderReservation(tx, orderId, to.toLowerCase());
