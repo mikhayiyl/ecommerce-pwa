@@ -147,4 +147,59 @@ describe("M-Pesa webhook", () => {
     );
     expect(settleAttemptSuccess).not.toHaveBeenCalled();
   });
+
+  it("does not settle a callback with a null result code as success", async () => {
+    const callback = {
+      Body: {
+        stkCallback: {
+          ...successCallback.Body.stkCallback,
+          ResultCode: null,
+        },
+      },
+    };
+
+    const response = await postCallback(callback);
+
+    expect(response.status).toBe(200);
+    expect(settleAttemptSuccess).not.toHaveBeenCalled();
+    expect(settleAttemptFailure).not.toHaveBeenCalled();
+  });
+
+  it("does not settle a callback with an empty checkout request ID", async () => {
+    const callback = {
+      Body: {
+        stkCallback: {
+          ...successCallback.Body.stkCallback,
+          CheckoutRequestID: " ",
+        },
+      },
+    };
+
+    const response = await postCallback(callback);
+
+    expect(response.status).toBe(200);
+    expect(settleAttemptSuccess).not.toHaveBeenCalled();
+    expect(settleAttemptFailure).not.toHaveBeenCalled();
+  });
+
+  it("does not settle a successful callback with a negative amount", async () => {
+    const callback = {
+      Body: {
+        stkCallback: {
+          ...successCallback.Body.stkCallback,
+          CallbackMetadata: {
+            Item: [
+              { Name: "Amount", Value: -1250 },
+              { Name: "MpesaReceiptNumber", Value: "QJK1ABC2DE" },
+            ],
+          },
+        },
+      },
+    };
+
+    const response = await postCallback(callback);
+
+    expect(response.status).toBe(200);
+    expect(settleAttemptSuccess).not.toHaveBeenCalled();
+  });
 });
