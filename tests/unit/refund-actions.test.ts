@@ -42,7 +42,10 @@ describe("markRefundProcessedAction", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    mocks.requireAdmin.mockResolvedValue(undefined);
+    mocks.requireAdmin.mockResolvedValue({
+      id: "admin-123",
+      role: "ADMIN",
+    });
     mocks.prisma.paymentAttempt.findUnique.mockResolvedValue({ ...attempt });
     mocks.prisma.paymentAttempt.updateMany.mockResolvedValue({ count: 1 });
   });
@@ -114,9 +117,11 @@ describe("markRefundProcessedAction", () => {
         id: paymentAttemptId,
         refundStatus: "PENDING",
       },
+
       data: {
         refundStatus: "REFUNDED",
         refundedAt: expect.any(Date),
+        refundedById: "admin-123",
       },
     });
 

@@ -27,6 +27,7 @@ model User {
   addresses     Address[]
   cartItems     CartItem[]
   disabled      Boolean   @default(false)
+  refundsProcessed PaymentAttempt[] @relation("RefundProcessedBy")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -198,8 +199,10 @@ model PaymentAttempt {
   receipt       String?
   failureReason String?
   refundStatus  RefundStatus @default(NOT_REQUIRED)
- refundReason  String?
- refundedAt    DateTime?
+  refundedById String?
+  refundedBy   User?   @relation("RefundProcessedBy", fields: [refundedById], references: [id], onDelete: SetNull)
+  refundReason  String?
+  refundedAt    DateTime?
   createdAt     DateTime        @default(now())
   resolvedAt    DateTime?
 

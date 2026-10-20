@@ -12,7 +12,7 @@ export async function markRefundProcessedAction(
   _prev: RefundState,
   formData: FormData,
 ): Promise<RefundState> {
-  await requireAdmin();
+  const admin = await requireAdmin();
 
   const parsed = z
     .object({
@@ -50,9 +50,11 @@ export async function markRefundProcessedAction(
       id: attempt.id,
       refundStatus: "PENDING",
     },
+
     data: {
       refundStatus: "REFUNDED",
       refundedAt: new Date(),
+      refundedById: admin.id,
     },
   });
 
