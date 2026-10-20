@@ -112,35 +112,57 @@ export async function settleAttemptSuccess(input: {
     });
   } catch (e) {
     if (!(e instanceof StockUnavailableError)) throw e;
-    // Money arrived but the goods are gone: record the payment, leave the order cancelled, flag a refund.
-    await prisma.$transaction([
-      prisma.paymentAttempt.updateMany({
-        where: { id: attempt.id },
+
+    // The original transaction rolled back. Record the late payment
+    // only if this attempt has not already been resolved.
+    const fallback = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.paymentAttempt.updateMany({
+        where: {
+          id: attempt.id,
+          status: { in: ["PENDING", "FAILED"] },
+        },
         data: {
           status: "SUCCESS",
           receipt,
           resolvedAt: new Date(),
           failureReason: "Paid after expiry and out of stock: refund required",
         },
-      }),
-      prisma.order.update({
-        where: { id: attempt.orderId },
+      });
+
+      if (claimed.count === 0) {
+        return { recorded: false };
+      }
+
+      // Never overwrite a payment already recorded on an order
+      // that another callback has resolved.
+      await tx.order.updateMany({
+        where: {
+          id: attempt.orderId,
+          status: "CANCELLED",
+          paymentStatus: { not: "PAID" },
+        },
         data: {
           paymentStatus: "PAID",
           paymentProvider: attempt.provider,
           paymentReceipt: receipt,
           paidAt: new Date(),
         },
-      }),
-    ]);
-    console.error(
-      `REFUND REQUIRED: order ${attempt.orderId} was paid (${input.reference}) after it expired and stock ran out`,
-    );
+      });
+
+      return { recorded: true };
+    });
+
+    if (fallback.recorded) {
+      console.error(
+        `REFUND REQUIRED: order ${attempt.orderId} was paid (${input.reference}) after it expired and stock ran out`,
+      );
+    }
+
     return {
       ok: true,
       orderId: attempt.orderId,
       changed: false,
-      needsRefund: true,
+      needsRefund: fallback.recorded,
     };
   }
 

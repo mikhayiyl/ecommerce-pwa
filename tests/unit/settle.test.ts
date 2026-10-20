@@ -229,8 +229,8 @@ describe("settleAttemptSuccess", () => {
       new StockUnavailableError("Not enough stock for Laptop"),
     );
 
-    // First transaction: attempt to claim the cancelled order.
-    // It throws when stock cannot be re-reserved.
+    // First transaction: claim the attempt and cancelled order,
+    // then roll back when stock cannot be re-reserved.
     prismaMock.order.updateMany
       .mockResolvedValueOnce({ count: 0 })
       .mockResolvedValueOnce({ count: 1 });
@@ -241,8 +241,7 @@ describe("settleAttemptSuccess", () => {
       paymentStatus: "UNPAID",
     });
 
-    // The catch block uses an array transaction to record
-    // the successful charge and flag the refund.
+    // Keep the existing fallback behaviour for this baseline test.
     prismaMock.$transaction.mockImplementation(async (operation: unknown) => {
       if (typeof operation === "function") {
         return operation(transactionClient());
@@ -266,6 +265,64 @@ describe("settleAttemptSuccess", () => {
     });
 
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(2);
+    expect(sendOrderConfirmationMock).not.toHaveBeenCalled();
+  });
+
+  it("does not overwrite an order paid by another callback during the refund fallback", async () => {
+    reReserveOrderMock.mockRejectedValueOnce(
+      new StockUnavailableError("Not enough stock for Laptop"),
+    );
+
+    // Initial transaction: the order was cancelled, then stock reservation fails.
+    prismaMock.order.updateMany
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 1 })
+      // Fallback: another callback has already paid the order.
+      .mockResolvedValueOnce({ count: 0 });
+
+    prismaMock.order.findUniqueOrThrow.mockResolvedValue({
+      ...pendingOrder,
+      status: "CANCELLED",
+      paymentStatus: "UNPAID",
+    });
+
+    prismaMock.$transaction.mockImplementation(async (operation: unknown) => {
+      if (typeof operation === "function") {
+        return operation(transactionClient());
+      }
+
+      throw new Error("Unexpected transaction operation in this test");
+    });
+
+    const result = await settleAttemptSuccess({
+      reference: "ref-1",
+      amountCents: 5000,
+      currency: "USD",
+      receipt: "late-receipt",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      orderId: "order-1",
+      changed: false,
+      needsRefund: true,
+    });
+
+    expect(prismaMock.order.update).not.toHaveBeenCalled();
+
+    expect(prismaMock.order.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: {
+          id: "order-1",
+          status: "CANCELLED",
+          paymentStatus: { not: "PAID" },
+        },
+        data: expect.objectContaining({
+          paymentReceipt: "late-receipt",
+        }),
+      }),
+    );
+
     expect(sendOrderConfirmationMock).not.toHaveBeenCalled();
   });
 
