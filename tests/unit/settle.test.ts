@@ -147,10 +147,13 @@ describe("settleAttemptSuccess", () => {
           id: attempt.id,
           status: "SUCCESS",
         }),
-        data: expect.objectContaining({
+
+        data: {
+          refundStatus: "PENDING",
+          refundReason: "Order was already paid or is no longer payable",
           failureReason:
             "Refund required: order was already paid or is no longer payable",
-        }),
+        },
       }),
     );
   });
@@ -266,6 +269,18 @@ describe("settleAttemptSuccess", () => {
 
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(2);
     expect(sendOrderConfirmationMock).not.toHaveBeenCalled();
+    expect(prismaMock.paymentAttempt.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: {
+          id: attempt.id,
+          status: { in: ["PENDING", "FAILED"] },
+        },
+        data: expect.objectContaining({
+          refundStatus: "PENDING",
+          refundReason: "Paid after expiry, but stock is unavailable",
+        }),
+      }),
+    );
   });
 
   it("does not overwrite an order paid by another callback during the refund fallback", async () => {

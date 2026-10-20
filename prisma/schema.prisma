@@ -178,6 +178,12 @@ enum AttemptStatus {
   FAILED
 }
 
+enum RefundStatus {
+  NOT_REQUIRED
+  PENDING
+  REFUNDED
+}
+
 model PaymentAttempt {
   id            String          @id @default(cuid())
   orderId       String
@@ -191,6 +197,9 @@ model PaymentAttempt {
   currency      String
   receipt       String?
   failureReason String?
+  refundStatus  RefundStatus @default(NOT_REQUIRED)
+ refundReason  String?
+ refundedAt    DateTime?
   createdAt     DateTime        @default(now())
   resolvedAt    DateTime?
 

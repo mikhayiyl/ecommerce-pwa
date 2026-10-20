@@ -102,7 +102,10 @@ export async function settleAttemptSuccess(input: {
           id: attempt.id,
           status: "SUCCESS",
         },
+
         data: {
+          refundStatus: "PENDING",
+          refundReason: "Order was already paid or is no longer payable",
           failureReason:
             "Refund required: order was already paid or is no longer payable",
         },
@@ -126,6 +129,8 @@ export async function settleAttemptSuccess(input: {
           receipt,
           resolvedAt: new Date(),
           failureReason: "Paid after expiry and out of stock: refund required",
+          refundStatus: "PENDING",
+          refundReason: "Paid after expiry, but stock is unavailable",
         },
       });
 
