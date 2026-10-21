@@ -8,7 +8,10 @@ import { siteUrl } from "@/lib/site";
 import { clientIp } from "@/lib/security/client-ip";
 import { rateLimit } from "@/lib/security/rate-limit";
 import { PAYMENT_GRACE_MINUTES, holdUntil } from "@/features/orders/release";
-import { PaymentProviderError } from "@/features/payments/errors";
+import {
+  PaymentOutcomeUnknownError,
+  PaymentProviderError,
+} from "@/features/payments/errors";
 import {
   availableMethods,
   chargeCents,
@@ -142,9 +145,9 @@ export async function startPaymentAction(
       orderId: order.id,
       provider: "MPESA",
       status: "PENDING",
-      createdAt: { gt: new Date(now.getTime() - 90_000) },
     },
   });
+
   if (recent) {
     return {
       ok: false,
@@ -182,7 +185,18 @@ export async function startPaymentAction(
         "Check your phone and enter your M-Pesa PIN to complete the payment.",
     };
   } catch (e) {
+    if (e instanceof PaymentOutcomeUnknownError) {
+      await extendHold(order.id, now);
+
+      return {
+        ok: false,
+        error:
+          "We couldn't confirm whether M-Pesa received the request. Check your payment status before trying again.",
+      };
+    }
+
     await settleAttemptFailure(placeholder, "Could not send the M-Pesa prompt");
+
     return {
       ok: false,
       error:
@@ -253,12 +267,12 @@ export async function refreshPaymentAction(
             );
           }
         } else if (attempt.reference.startsWith("pending-")) {
-          // The prompt request never returned a CheckoutRequestID, so nothing can arrive for it.
-          if (ageMs > 120_000)
-            await settleAttemptFailure(
-              attempt.reference,
-              "The M-Pesa prompt was not sent",
-            );
+          // The request outcome may be unknown. Do not assume it was never sent.
+          // Keep the attempt pending for reconciliation.
+          console.warn(
+            "M-Pesa attempt has no CheckoutRequestID; manual reconciliation may be required",
+            attempt.id,
+          );
         } else if (ageMs > 60_000) {
           const q = await stkQuery(attempt.reference);
 

@@ -1,10 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const { prismaMock } = vi.hoisted(() => ({
+  prismaMock: {
+    mpesaCallback: {
+      upsert: vi.fn(),
+      update: vi.fn(),
+    },
+  },
+}));
+
+vi.mock("@/lib/prisma", () => ({
+  prisma: prismaMock,
+}));
+
 vi.mock("@/features/payments/settle", () => ({
   settleAttemptFailure: vi.fn(),
   settleAttemptSuccess: vi.fn(),
 }));
 
+import { prisma } from "@/lib/prisma";
 import { POST } from "@/app/api/webhooks/mpesa/[secret]/route";
 import {
   settleAttemptFailure,
@@ -50,6 +64,8 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.stubEnv("MPESA_CALLBACK_SECRET", "test-secret");
+  vi.mocked(prismaMock.mpesaCallback.upsert).mockResolvedValue({} as never);
+  vi.mocked(prismaMock.mpesaCallback.update).mockResolvedValue({} as never);
 });
 
 describe("M-Pesa webhook", () => {
@@ -105,6 +121,38 @@ describe("M-Pesa webhook", () => {
       receipt: "QJK1ABC2DE",
     });
     expect(settleAttemptFailure).not.toHaveBeenCalled();
+    expect(prisma.mpesaCallback.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          checkoutRequestId_resultCode: {
+            checkoutRequestId: "ws_CO_123",
+            resultCode: 0,
+          },
+        },
+        create: expect.objectContaining({
+          checkoutRequestId: "ws_CO_123",
+          resultCode: 0,
+          amountCents: 125000,
+          receipt: "QJK1ABC2DE",
+          status: "UNMATCHED",
+        }),
+        update: {},
+      }),
+    );
+
+    expect(prisma.mpesaCallback.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          checkoutRequestId_resultCode: {
+            checkoutRequestId: "ws_CO_123",
+            resultCode: 0,
+          },
+        },
+        data: expect.objectContaining({
+          status: "RECONCILED",
+        }),
+      }),
+    );
   });
 
   it("does not settle a successful callback with missing amount metadata", async () => {
@@ -201,5 +249,56 @@ describe("M-Pesa webhook", () => {
 
     expect(response.status).toBe(200);
     expect(settleAttemptSuccess).not.toHaveBeenCalled();
+  });
+
+  it("preserves unmatched successful callback evidence without marking it reconciled", async () => {
+    vi.mocked(settleAttemptSuccess).mockResolvedValue({
+      ok: false,
+      reason: "attempt_not_found",
+    } as Awaited<ReturnType<typeof settleAttemptSuccess>>);
+
+    const response = await postCallback(successCallback);
+
+    expect(response.status).toBe(200);
+    expect(prisma.mpesaCallback.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          checkoutRequestId: "ws_CO_123",
+          status: "UNMATCHED",
+        }),
+        update: {},
+      }),
+    );
+    expect(prisma.mpesaCallback.update).not.toHaveBeenCalled();
+  });
+
+  it("records successful callbacks with missing amounts but does not settle them", async () => {
+    const callback = {
+      Body: {
+        stkCallback: {
+          CheckoutRequestID: "ws_CO_missing_amount",
+          ResultCode: 0,
+          ResultDesc: "Success",
+          CallbackMetadata: {
+            Item: [{ Name: "MpesaReceiptNumber", Value: "QJK1ABC2DE" }],
+          },
+        },
+      },
+    };
+
+    const response = await postCallback(callback);
+
+    expect(response.status).toBe(200);
+    expect(prisma.mpesaCallback.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          checkoutRequestId: "ws_CO_missing_amount",
+          amountCents: null,
+          status: "UNMATCHED",
+        }),
+      }),
+    );
+    expect(settleAttemptSuccess).not.toHaveBeenCalled();
+    expect(prisma.mpesaCallback.update).not.toHaveBeenCalled();
   });
 });

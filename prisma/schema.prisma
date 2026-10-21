@@ -332,4 +332,21 @@ model GuestOrderClaimToken {
 
 
 
+model MpesaCallback {
+  id                String   @id @default(cuid())
+  checkoutRequestId String
+  merchantRequestId String?
+  resultCode        Int
+  resultDesc        String
+  amountCents       Int?
+  receipt           String?
+  rawPayload        Json
+  status            String   @default("UNMATCHED")
+  receivedAt        DateTime @default(now())
+  reconciledAt      DateTime?
+
+  @@unique([checkoutRequestId, resultCode])
+  @@index([status, receivedAt])
+}
+
 
