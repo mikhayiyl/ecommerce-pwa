@@ -7,11 +7,17 @@ const mocks = vi.hoisted(() => ({
     },
     $transaction: vi.fn(),
   },
+
   tx: {
+    $queryRaw: vi.fn(),
     order: {
       updateMany: vi.fn(),
     },
+    paymentAttempt: {
+      findFirst: vi.fn(),
+    },
   },
+
   releaseOrderReservation: vi.fn(),
 }));
 
@@ -31,9 +37,11 @@ describe("expireStaleOrders", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
+    mocks.tx.$queryRaw.mockResolvedValue([]);
     mocks.prisma.order.findMany.mockResolvedValue([{ id: "order-123" }]);
     mocks.tx.order.updateMany.mockResolvedValue({ count: 1 });
     mocks.releaseOrderReservation.mockResolvedValue(true);
+    mocks.tx.paymentAttempt.findFirst.mockResolvedValue(null);
 
     mocks.prisma.$transaction.mockImplementation(
       async (callback: (tx: typeof mocks.tx) => Promise<unknown>) =>
@@ -62,6 +70,17 @@ describe("expireStaleOrders", () => {
       "order-123",
       "expired unpaid",
     );
+
+    expect(mocks.tx.paymentAttempt.findFirst).toHaveBeenCalledWith({
+      where: {
+        orderId: "order-123",
+        provider: "MPESA",
+        status: "PENDING",
+      },
+      select: { id: true },
+    });
+
+    expect(mocks.tx.$queryRaw).toHaveBeenCalledTimes(1);
   });
 
   it("does not release stock when the conditional cancellation fails", async () => {
@@ -80,5 +99,17 @@ describe("expireStaleOrders", () => {
 
     expect(result).toBe(0);
     expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("does not cancel or release stock when an M-Pesa attempt is pending", async () => {
+    mocks.tx.paymentAttempt.findFirst.mockResolvedValue({
+      id: "attempt-123",
+    });
+
+    const result = await expireStaleOrders(now);
+
+    expect(result).toBe(0);
+    expect(mocks.tx.order.updateMany).not.toHaveBeenCalled();
+    expect(mocks.releaseOrderReservation).not.toHaveBeenCalled();
   });
 });

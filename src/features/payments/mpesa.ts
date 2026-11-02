@@ -1,5 +1,8 @@
 import { siteUrl } from "@/lib/site";
-import { PaymentProviderError } from "@/features/payments/errors";
+import {
+  PaymentOutcomeUnknownError,
+  PaymentProviderError,
+} from "@/features/payments/errors";
 
 // ---------- Pure helpers (unit tested) ----------
 
@@ -29,9 +32,9 @@ export function mpesaPassword(
 
 export type StkCallback = {
   checkoutRequestId: string;
+  merchantRequestId: string | null;
   resultCode: number;
   resultDesc: string;
-  /** Whole shillings paid; only present on success. */
   amount: number | null;
   receipt: string | null;
 };
@@ -69,6 +72,8 @@ export function parseStkCallback(body: unknown): StkCallback | null {
 
   return {
     checkoutRequestId: cb.CheckoutRequestID,
+    merchantRequestId:
+      typeof cb.MerchantRequestID === "string" ? cb.MerchantRequestID : null,
     resultCode: Number(cb.ResultCode),
     resultDesc: typeof cb.ResultDesc === "string" ? cb.ResultDesc : "",
     amount:
@@ -153,7 +158,11 @@ async function accessToken(): Promise<string> {
   return json.access_token;
 }
 
-async function daraja(path: string, payload: Record<string, unknown>) {
+async function daraja(
+  path: string,
+  payload: Record<string, unknown>,
+  outcomeUnknownOnNetworkError = false,
+) {
   const e = env();
   const token = await accessToken();
   let res: Response;
@@ -169,8 +178,15 @@ async function daraja(path: string, payload: Record<string, unknown>) {
       cache: "no-store",
     });
   } catch {
+    if (outcomeUnknownOnNetworkError) {
+      throw new PaymentOutcomeUnknownError(
+        "M-Pesa may have received the payment request. Check your payment status before trying again.",
+      );
+    }
+
     throw new PaymentProviderError("Could not reach M-Pesa. Please try again.");
   }
+
   const json = (await res.json().catch(() => null)) as Record<
     string,
     unknown
@@ -186,20 +202,32 @@ export async function stkPush(input: {
 }): Promise<{ checkoutRequestId: string }> {
   const e = env();
   const timestamp = mpesaTimestamp();
-  const { res, json } = await daraja("/mpesa/stkpush/v1/processrequest", {
-    BusinessShortCode: e.shortcode,
-    Password: mpesaPassword(e.shortcode, e.passkey, timestamp),
-    Timestamp: timestamp,
-    TransactionType: e.transactionType,
-    Amount: input.amountWhole,
-    PartyA: input.phone,
-    PartyB: e.partyB,
-    PhoneNumber: input.phone,
-    CallBackURL: `${siteUrl()}/api/webhooks/mpesa/${e.callbackSecret}`,
-    AccountReference: input.accountReference.slice(0, 12),
-    TransactionDesc: "Order payment",
-  });
+  const { res, json } = await daraja(
+    "/mpesa/stkpush/v1/processrequest",
+    {
+      BusinessShortCode: e.shortcode,
+      Password: mpesaPassword(e.shortcode, e.passkey, timestamp),
+      Timestamp: timestamp,
+      TransactionType: e.transactionType,
+      Amount: input.amountWhole,
+      PartyA: input.phone,
+      PartyB: e.partyB,
+      PhoneNumber: input.phone,
+      CallBackURL: `${siteUrl()}/api/webhooks/mpesa/${e.callbackSecret}`,
+      AccountReference: input.accountReference.slice(0, 12),
+      TransactionDesc: "Order payment",
+    },
+    true,
+  );
+
   const id = json?.CheckoutRequestID;
+
+  if (res.status >= 500 || (res.ok && json === null)) {
+    throw new PaymentOutcomeUnknownError(
+      "M-Pesa may have received the payment request. Check your payment status before trying again.",
+    );
+  }
+
   if (!res.ok || String(json?.ResponseCode) !== "0" || typeof id !== "string") {
     console.error(
       "mpesa stk push failed",
@@ -210,6 +238,7 @@ export async function stkPush(input: {
       "Could not send the M-Pesa prompt. Check the phone number and try again.",
     );
   }
+
   return { checkoutRequestId: id };
 }
 
