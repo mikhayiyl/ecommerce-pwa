@@ -17,6 +17,17 @@ const mocks = vi.hoisted(() => ({
       findFirst: vi.fn(),
       update: vi.fn(),
     },
+    $transaction: vi.fn(),
+  },
+  tx: {
+    $queryRaw: vi.fn(),
+    order: {
+      findUnique: vi.fn(),
+    },
+    paymentAttempt: {
+      create: vi.fn(),
+      findFirst: vi.fn(),
+    },
   },
 }));
 
@@ -93,15 +104,21 @@ describe("startPaymentAction payment retries", () => {
     mocks.clientIp.mockResolvedValue("127.0.0.1");
     mocks.rateLimit.mockReturnValue(true);
 
+    mocks.tx.$queryRaw.mockResolvedValue([]);
+    mocks.tx.order.findUnique.mockResolvedValue({ ...order });
+    mocks.tx.paymentAttempt.create.mockResolvedValue({ id: "attempt-new" });
+    mocks.tx.paymentAttempt.findFirst.mockResolvedValue(null);
+
     mocks.prisma.order.findUnique.mockResolvedValue({ ...order });
     mocks.prisma.order.updateMany.mockResolvedValue({ count: 1 });
-
-    mocks.prisma.paymentAttempt.create.mockResolvedValue({
-      id: "attempt-new",
-    });
-
+    mocks.prisma.paymentAttempt.create.mockResolvedValue({ id: "attempt-new" });
     mocks.prisma.paymentAttempt.findFirst.mockResolvedValue(null);
     mocks.prisma.paymentAttempt.update.mockResolvedValue({});
+
+    mocks.prisma.$transaction.mockImplementation(
+      async (callback: (tx: typeof mocks.tx) => Promise<unknown>) =>
+        callback(mocks.tx),
+    );
 
     mocks.initializePaystack.mockResolvedValue({
       authorizationUrl: "https://paystack.example.com/checkout",
@@ -126,12 +143,12 @@ describe("startPaymentAction payment retries", () => {
       url: "https://paystack.example.com/checkout",
     });
 
-    expect(mocks.prisma.paymentAttempt.create).toHaveBeenCalledTimes(1);
+    expect(mocks.tx.paymentAttempt.create).toHaveBeenCalledTimes(1);
     expect(mocks.initializePaystack).toHaveBeenCalledTimes(1);
   });
 
   it("blocks another M-Pesa prompt when a recent attempt is pending", async () => {
-    mocks.prisma.paymentAttempt.findFirst.mockResolvedValue({
+    mocks.tx.paymentAttempt.findFirst.mockResolvedValue({
       id: "attempt-pending",
       status: "PENDING",
     });
@@ -148,7 +165,7 @@ describe("startPaymentAction payment retries", () => {
     });
 
     expect(mocks.stkPush).not.toHaveBeenCalled();
-    expect(mocks.prisma.paymentAttempt.create).not.toHaveBeenCalled();
+    expect(mocks.tx.paymentAttempt.create).not.toHaveBeenCalled();
   });
 
   it("allows a new M-Pesa prompt when no pending attempt exists", async () => {
@@ -163,7 +180,7 @@ describe("startPaymentAction payment retries", () => {
       kind: "prompt",
     });
 
-    expect(mocks.prisma.paymentAttempt.create).toHaveBeenCalledTimes(1);
+    expect(mocks.tx.paymentAttempt.create).toHaveBeenCalledTimes(1);
     expect(mocks.stkPush).toHaveBeenCalledTimes(1);
 
     expect(mocks.prisma.paymentAttempt.update).toHaveBeenCalledWith({

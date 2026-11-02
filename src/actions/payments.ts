@@ -8,10 +8,7 @@ import { siteUrl } from "@/lib/site";
 import { clientIp } from "@/lib/security/client-ip";
 import { rateLimit } from "@/lib/security/rate-limit";
 import { PAYMENT_GRACE_MINUTES, holdUntil } from "@/features/orders/release";
-import {
-  PaymentOutcomeUnknownError,
-  PaymentProviderError,
-} from "@/features/payments/errors";
+import { PaymentProviderError } from "@/features/payments/errors";
 import {
   availableMethods,
   chargeCents,
@@ -99,15 +96,45 @@ export async function startPaymentAction(
 
   if (method === "PAYSTACK") {
     const reference = `${order.id}-${randomBytes(4).toString("hex")}`;
-    await prisma.paymentAttempt.create({
-      data: {
-        orderId: order.id,
-        provider: "PAYSTACK",
-        reference,
-        amountCents: chargeCents("PAYSTACK", order.totalCents),
-        currency,
-      },
+    const attempt = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`
+    SELECT "id"
+    FROM "Order"
+    WHERE "id" = ${order.id}
+    FOR UPDATE
+  `;
+
+      const currentOrder = await tx.order.findUnique({
+        where: { id: order.id },
+      });
+
+      if (
+        !currentOrder ||
+        currentOrder.status !== "PENDING" ||
+        currentOrder.paymentStatus === "PAID" ||
+        (currentOrder.expiresAt && currentOrder.expiresAt <= new Date())
+      ) {
+        return null;
+      }
+
+      return tx.paymentAttempt.create({
+        data: {
+          orderId: currentOrder.id,
+          provider: "PAYSTACK",
+          reference,
+          amountCents: chargeCents("PAYSTACK", currentOrder.totalCents),
+          currency: currentOrder.currency.toUpperCase(),
+        },
+      });
     });
+
+    if (!attempt) {
+      return {
+        ok: false,
+        error:
+          "This order can no longer be paid. Please refresh and try again.",
+      };
+    }
     try {
       const { authorizationUrl } = await initializePaystack({
         email: order.email,
@@ -140,15 +167,63 @@ export async function startPaymentAction(
       error: "Enter a valid Safaricom number, for example 0712 345 678",
     };
 
-  const recent = await prisma.paymentAttempt.findFirst({
-    where: {
-      orderId: order.id,
-      provider: "MPESA",
-      status: "PENDING",
-    },
+  // Safaricom only tells us the real reference (CheckoutRequestID) after the prompt is sent.
+  const placeholder = `pending-${randomUUID()}`;
+
+  const attempt = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`
+    SELECT "id"
+    FROM "Order"
+    WHERE "id" = ${order.id}
+    FOR UPDATE
+  `;
+
+    const currentOrder = await tx.order.findUnique({
+      where: { id: order.id },
+    });
+
+    if (
+      !currentOrder ||
+      currentOrder.status !== "PENDING" ||
+      currentOrder.paymentStatus === "PAID" ||
+      (currentOrder.expiresAt && currentOrder.expiresAt <= new Date())
+    ) {
+      return { kind: "unpayable" as const };
+    }
+
+    const recent = await tx.paymentAttempt.findFirst({
+      where: {
+        orderId: currentOrder.id,
+        provider: "MPESA",
+        status: "PENDING",
+      },
+    });
+
+    if (recent) {
+      return { kind: "pending" as const };
+    }
+
+    const created = await tx.paymentAttempt.create({
+      data: {
+        orderId: currentOrder.id,
+        provider: "MPESA",
+        reference: placeholder,
+        amountCents: chargeCents("MPESA", currentOrder.totalCents),
+        currency: currentOrder.currency.toUpperCase(),
+      },
+    });
+
+    return { kind: "created" as const, attempt: created };
   });
 
-  if (recent) {
+  if (attempt.kind === "unpayable") {
+    return {
+      ok: false,
+      error: "This order can no longer be paid. Please refresh and try again.",
+    };
+  }
+
+  if (attempt.kind === "pending") {
     return {
       ok: false,
       error:
@@ -156,17 +231,7 @@ export async function startPaymentAction(
     };
   }
 
-  // Safaricom only tells us the real reference (CheckoutRequestID) after the prompt is sent.
-  const placeholder = `pending-${randomUUID()}`;
-  const attempt = await prisma.paymentAttempt.create({
-    data: {
-      orderId: order.id,
-      provider: "MPESA",
-      reference: placeholder,
-      amountCents: chargeCents("MPESA", order.totalCents),
-      currency,
-    },
-  });
+  const createdAttempt = attempt.attempt;
   try {
     const { checkoutRequestId } = await stkPush({
       phone: msisdn,
@@ -174,7 +239,7 @@ export async function startPaymentAction(
       accountReference: `ORD${order.number}`,
     });
     await prisma.paymentAttempt.update({
-      where: { id: attempt.id },
+      where: { id: createdAttempt.id },
       data: { reference: checkoutRequestId },
     });
     await extendHold(order.id, now);
@@ -185,18 +250,7 @@ export async function startPaymentAction(
         "Check your phone and enter your M-Pesa PIN to complete the payment.",
     };
   } catch (e) {
-    if (e instanceof PaymentOutcomeUnknownError) {
-      await extendHold(order.id, now);
-
-      return {
-        ok: false,
-        error:
-          "We couldn't confirm whether M-Pesa received the request. Check your payment status before trying again.",
-      };
-    }
-
     await settleAttemptFailure(placeholder, "Could not send the M-Pesa prompt");
-
     return {
       ok: false,
       error:
@@ -267,12 +321,12 @@ export async function refreshPaymentAction(
             );
           }
         } else if (attempt.reference.startsWith("pending-")) {
-          // The request outcome may be unknown. Do not assume it was never sent.
-          // Keep the attempt pending for reconciliation.
-          console.warn(
-            "M-Pesa attempt has no CheckoutRequestID; manual reconciliation may be required",
-            attempt.id,
-          );
+          // The prompt request never returned a CheckoutRequestID, so nothing can arrive for it.
+          if (ageMs > 120_000)
+            await settleAttemptFailure(
+              attempt.reference,
+              "The M-Pesa prompt was not sent",
+            );
         } else if (ageMs > 60_000) {
           const q = await stkQuery(attempt.reference);
 

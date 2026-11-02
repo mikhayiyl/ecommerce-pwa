@@ -7,7 +7,9 @@ const mocks = vi.hoisted(() => ({
     },
     $transaction: vi.fn(),
   },
+
   tx: {
+    $queryRaw: vi.fn(),
     order: {
       updateMany: vi.fn(),
     },
@@ -15,6 +17,7 @@ const mocks = vi.hoisted(() => ({
       findFirst: vi.fn(),
     },
   },
+
   releaseOrderReservation: vi.fn(),
 }));
 
@@ -34,6 +37,7 @@ describe("expireStaleOrders", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
+    mocks.tx.$queryRaw.mockResolvedValue([]);
     mocks.prisma.order.findMany.mockResolvedValue([{ id: "order-123" }]);
     mocks.tx.order.updateMany.mockResolvedValue({ count: 1 });
     mocks.releaseOrderReservation.mockResolvedValue(true);
@@ -75,6 +79,8 @@ describe("expireStaleOrders", () => {
       },
       select: { id: true },
     });
+
+    expect(mocks.tx.$queryRaw).toHaveBeenCalledTimes(1);
   });
 
   it("does not release stock when the conditional cancellation fails", async () => {

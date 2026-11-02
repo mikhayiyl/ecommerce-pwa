@@ -34,7 +34,14 @@ export async function expireStaleOrders(
 
   for (const { id } of stale) {
     const done = await prisma.$transaction(async (tx) => {
-      // Recheck everything before cancellation to reduce race conditions.
+      // Serialize expiry with payment initiation on the same order row.
+      await tx.$queryRaw`
+    SELECT "id"
+    FROM "Order"
+    WHERE "id" = ${id}
+    FOR UPDATE
+  `;
+
       const unresolvedMpesa = await tx.paymentAttempt.findFirst({
         where: {
           orderId: id,

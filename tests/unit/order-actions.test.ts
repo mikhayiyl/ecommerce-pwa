@@ -7,7 +7,9 @@ const mocks = vi.hoisted(() => ({
   prisma: {
     $transaction: vi.fn(),
   },
+
   tx: {
+    $queryRaw: vi.fn(),
     order: {
       findUnique: vi.fn(),
       updateMany: vi.fn(),
@@ -44,7 +46,7 @@ describe("updateOrderStatusAction", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-
+    mocks.tx.$queryRaw.mockResolvedValue([]);
     mocks.requireAdmin.mockResolvedValue(undefined);
     mocks.tx.order.findUnique.mockResolvedValue({ ...order });
     mocks.tx.order.updateMany.mockResolvedValue({ count: 1 });
@@ -63,6 +65,7 @@ describe("updateOrderStatusAction", () => {
     const result = await updateOrderStatusAction("order-123", {}, formData);
 
     expect(result).toEqual({ success: "Order updated" });
+    expect(mocks.tx.$queryRaw).toHaveBeenCalledTimes(1);
 
     expect(mocks.tx.order.updateMany).toHaveBeenCalledWith({
       where: {
