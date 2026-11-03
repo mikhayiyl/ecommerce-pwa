@@ -173,10 +173,20 @@ enum PaymentProvider {
   MPESA
 }
 
+
 enum AttemptStatus {
   PENDING
   SUCCESS
   FAILED
+  SUBMITTING
+  OUTCOME_UNKNOWN
+}
+
+enum MpesaCallbackProcessingStatus {
+  UNMATCHED
+  PROCESSING
+  RECONCILED
+  NEEDS_REVIEW
 }
 
 enum RefundStatus {
@@ -190,8 +200,10 @@ model PaymentAttempt {
   orderId       String
   order         Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
   provider      PaymentProvider
-  // Paystack: our reference. M-Pesa: the CheckoutRequestID returned by Safaricom.
+  // Paystack reference or local M-Pesa reference; provider IDs are stored separately.
   reference     String          @unique
+  checkoutRequestId String?     @unique
+  merchantRequestId String?
   status        AttemptStatus   @default(PENDING)
   // Expected charge in minor units of `currency`, checked against what the provider reports.
   amountCents   Int
@@ -205,8 +217,14 @@ model PaymentAttempt {
   refundedAt    DateTime?
   createdAt     DateTime        @default(now())
   resolvedAt    DateTime?
+  outcomeUnknownAt DateTime?
+  reviewDueAt   DateTime?
+  mpesaCallbacks MpesaCallback[]
 
   @@index([orderId, createdAt])
+  @@index([provider, status, reviewDueAt])
+  @@index([orderId, provider, status])
+  @@index([merchantRequestId])
 }
 
 model OrderItem {
@@ -314,8 +332,6 @@ model CartItem {
 }
 
 
-
-
 model GuestOrderClaimToken {
   id         String    @id @default(cuid())
   orderId    String
@@ -329,11 +345,8 @@ model GuestOrderClaimToken {
 }
 
 
-
-
-
 model MpesaCallback {
-  id                String   @id @default(cuid())
+  id                String                       @id @default(cuid())
   checkoutRequestId String
   merchantRequestId String?
   resultCode        Int
@@ -341,12 +354,19 @@ model MpesaCallback {
   amountCents       Int?
   receipt           String?
   rawPayload        Json
-  status            String   @default("UNMATCHED")
-  receivedAt        DateTime @default(now())
+  status            String                       @default("UNMATCHED")
+  processingStatus  MpesaCallbackProcessingStatus @default(UNMATCHED)
+  retryCount        Int                          @default(0)
+  nextRetryAt       DateTime?
+  leaseExpiresAt    DateTime?
+  paymentAttemptId  String?
+  paymentAttempt    PaymentAttempt?              @relation(fields: [paymentAttemptId], references: [id], onDelete: SetNull)
+  receivedAt        DateTime                     @default(now())
   reconciledAt      DateTime?
 
   @@unique([checkoutRequestId, resultCode])
   @@index([status, receivedAt])
+  @@index([processingStatus, nextRetryAt, leaseExpiresAt])
+  @@index([paymentAttemptId])
 }
-
 
