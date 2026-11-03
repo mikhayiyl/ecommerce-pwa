@@ -71,11 +71,11 @@ export async function POST(
 
     const result = await settleAttemptSuccess({
       reference: cb.checkoutRequestId,
+      checkoutRequestId: cb.checkoutRequestId,
       amountCents,
       currency: "KES",
       receipt: cb.receipt,
     });
-
     if (result.ok) {
       await prisma.mpesaCallback.update({
         where: {
@@ -86,6 +86,13 @@ export async function POST(
         },
         data: {
           status: "RECONCILED",
+          processingStatus: "RECONCILED",
+          paymentAttemptId: (
+            await prisma.paymentAttempt.findUnique({
+              where: { checkoutRequestId: cb.checkoutRequestId },
+              select: { id: true },
+            })
+          )?.id,
           reconciledAt: new Date(),
         },
       });
@@ -102,6 +109,7 @@ export async function POST(
     await settleAttemptFailure(
       cb.checkoutRequestId,
       cb.resultDesc || "The M-Pesa payment was not completed",
+      cb.checkoutRequestId,
     );
   }
 

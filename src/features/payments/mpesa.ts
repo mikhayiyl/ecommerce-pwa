@@ -199,7 +199,10 @@ export async function stkPush(input: {
   phone: string;
   amountWhole: number;
   accountReference: string;
-}): Promise<{ checkoutRequestId: string }> {
+}): Promise<{
+  checkoutRequestId: string;
+  merchantRequestId: string | null;
+}> {
   const e = env();
   const timestamp = mpesaTimestamp();
   const { res, json } = await daraja(
@@ -220,7 +223,8 @@ export async function stkPush(input: {
     true,
   );
 
-  const id = json?.CheckoutRequestID;
+  const checkoutRequestId = json?.CheckoutRequestID;
+  const merchantRequestId = json?.MerchantRequestID;
 
   if (res.status >= 500 || (res.ok && json === null)) {
     throw new PaymentOutcomeUnknownError(
@@ -228,18 +232,53 @@ export async function stkPush(input: {
     );
   }
 
-  if (!res.ok || String(json?.ResponseCode) !== "0" || typeof id !== "string") {
+  if (!res.ok) {
     console.error(
       "mpesa stk push failed",
       res.status,
       json?.errorMessage ?? json?.ResponseDescription,
     );
+
     throw new PaymentProviderError(
       "Could not send the M-Pesa prompt. Check the phone number and try again.",
     );
   }
 
-  return { checkoutRequestId: id };
+  if (String(json?.ResponseCode) !== "0") {
+    if (json?.ResponseCode === undefined) {
+      throw new PaymentOutcomeUnknownError(
+        "M-Pesa's response could not confirm whether the payment request was accepted.",
+      );
+    }
+
+    console.error(
+      "mpesa stk push failed",
+      res.status,
+      json?.errorMessage ?? json?.ResponseDescription,
+    );
+
+    throw new PaymentProviderError(
+      "Could not send the M-Pesa prompt. Check the phone number and try again.",
+    );
+  }
+
+  if (
+    typeof checkoutRequestId !== "string" ||
+    checkoutRequestId.trim().length === 0
+  ) {
+    throw new PaymentOutcomeUnknownError(
+      "M-Pesa may have received the payment request, but its transaction reference could not be confirmed.",
+    );
+  }
+
+  return {
+    checkoutRequestId: checkoutRequestId.trim(),
+    merchantRequestId:
+      typeof merchantRequestId === "string" &&
+      merchantRequestId.trim().length > 0
+        ? merchantRequestId.trim()
+        : null,
+  };
 }
 
 export type StkQuery = {

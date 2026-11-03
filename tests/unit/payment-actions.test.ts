@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
       create: vi.fn(),
       findFirst: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
     $transaction: vi.fn(),
   },
@@ -24,9 +25,11 @@ const mocks = vi.hoisted(() => ({
     order: {
       findUnique: vi.fn(),
     },
+
     paymentAttempt: {
       create: vi.fn(),
       findFirst: vi.fn(),
+      updateMany: vi.fn(),
     },
   },
 }));
@@ -78,7 +81,7 @@ vi.mock("@/features/payments/settle", () => ({
   settleAttemptFailure: mocks.settleAttemptFailure,
   settleAttemptSuccess: vi.fn(),
 }));
-
+import { PaymentProviderError } from "@/features/payments/errors";
 import { startPaymentAction } from "@/actions/payments";
 
 const order = {
@@ -105,6 +108,8 @@ describe("startPaymentAction payment retries", () => {
     mocks.rateLimit.mockReturnValue(true);
 
     mocks.tx.$queryRaw.mockResolvedValue([]);
+    mocks.prisma.paymentAttempt.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.paymentAttempt.updateMany.mockResolvedValue({ count: 1 });
     mocks.tx.order.findUnique.mockResolvedValue({ ...order });
     mocks.tx.paymentAttempt.create.mockResolvedValue({ id: "attempt-new" });
     mocks.tx.paymentAttempt.findFirst.mockResolvedValue(null);
@@ -126,6 +131,7 @@ describe("startPaymentAction payment retries", () => {
 
     mocks.stkPush.mockResolvedValue({
       checkoutRequestId: "ws_CO_456",
+      merchantRequestId: null,
     });
 
     mocks.settleAttemptFailure.mockResolvedValue(undefined);
@@ -181,11 +187,26 @@ describe("startPaymentAction payment retries", () => {
     });
 
     expect(mocks.tx.paymentAttempt.create).toHaveBeenCalledTimes(1);
+    expect(mocks.tx.paymentAttempt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        orderId: "order-123",
+        provider: "MPESA",
+        status: "SUBMITTING",
+      }),
+    });
+
     expect(mocks.stkPush).toHaveBeenCalledTimes(1);
 
-    expect(mocks.prisma.paymentAttempt.update).toHaveBeenCalledWith({
-      where: { id: "attempt-new" },
-      data: { reference: "ws_CO_456" },
+    expect(mocks.prisma.paymentAttempt.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "attempt-new",
+        status: "SUBMITTING",
+      },
+      data: {
+        checkoutRequestId: "ws_CO_456",
+        merchantRequestId: null,
+        status: "PENDING",
+      },
     });
   });
 
@@ -210,7 +231,7 @@ describe("startPaymentAction payment retries", () => {
     );
   });
 
-  it("marks an M-Pesa attempt failed when the prompt request throws", async () => {
+  it("keeps an M-Pesa attempt OUTCOME_UNKNOWN when the provider response is uncertain", async () => {
     mocks.stkPush.mockRejectedValue(new Error("Provider unavailable"));
 
     const result = await startPaymentAction({
@@ -220,13 +241,54 @@ describe("startPaymentAction payment retries", () => {
     });
 
     expect(result).toMatchObject({
-      ok: false,
-      error: "Could not send the M-Pesa prompt. Please try again.",
+      ok: true,
+      kind: "prompt",
+      message: expect.stringContaining("Do not request another prompt"),
     });
 
-    expect(mocks.settleAttemptFailure).toHaveBeenCalledWith(
-      expect.stringMatching(/^pending-/),
-      "Could not send the M-Pesa prompt",
+    expect(mocks.prisma.paymentAttempt.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "attempt-new",
+        status: "SUBMITTING",
+      },
+      data: expect.objectContaining({
+        status: "OUTCOME_UNKNOWN",
+        outcomeUnknownAt: expect.any(Date),
+        reviewDueAt: expect.any(Date),
+      }),
+    });
+
+    expect(mocks.settleAttemptFailure).not.toHaveBeenCalled();
+  });
+
+  it("marks an M-Pesa attempt FAILED when the provider definitely rejects the request", async () => {
+    mocks.stkPush.mockRejectedValue(
+      new PaymentProviderError("M-Pesa rejected the request"),
     );
+
+    const result = await startPaymentAction({
+      orderId: "order-123",
+      method: "MPESA",
+      phone: "0712345678",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: "M-Pesa rejected the request",
+    });
+
+    expect(mocks.prisma.paymentAttempt.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "attempt-new",
+        status: "SUBMITTING",
+      },
+      data: expect.objectContaining({
+        status: "FAILED",
+        failureReason: "Could not send the M-Pesa prompt",
+        resolvedAt: expect.any(Date),
+      }),
+    });
+
+    expect(mocks.settleAttemptFailure).not.toHaveBeenCalled();
   });
 });

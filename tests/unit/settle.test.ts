@@ -109,6 +109,35 @@ describe("settleAttemptSuccess", () => {
     expect(sendOrderConfirmationMock).toHaveBeenCalledWith("order-1");
   });
 
+  it("finds an M-Pesa attempt using its Checkout Request ID", async () => {
+    prismaMock.paymentAttempt.findUnique.mockResolvedValue({
+      ...attempt,
+      provider: "MPESA",
+      reference: "local-ref-1",
+      checkoutRequestId: "ws_CO_456",
+      currency: "KES",
+    });
+
+    const result = await settleAttemptSuccess({
+      reference: "ws_CO_456",
+      checkoutRequestId: "ws_CO_456",
+      amountCents: 5000,
+      currency: "KES",
+      receipt: "QWE123456",
+    });
+
+    expect(prismaMock.paymentAttempt.findUnique).toHaveBeenCalledWith({
+      where: { checkoutRequestId: "ws_CO_456" },
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      orderId: "order-1",
+      changed: true,
+      needsRefund: false,
+    });
+  });
+
   it("flags a second payment for a refund when the order is already paid", async () => {
     prismaMock.order.updateMany.mockResolvedValue({ count: 0 });
     prismaMock.order.findUniqueOrThrow.mockResolvedValue({
@@ -273,7 +302,9 @@ describe("settleAttemptSuccess", () => {
       expect.objectContaining({
         where: {
           id: attempt.id,
-          status: { in: ["PENDING", "FAILED"] },
+          status: {
+            in: ["PENDING", "SUBMITTING", "OUTCOME_UNKNOWN", "FAILED"],
+          },
         },
         data: expect.objectContaining({
           refundStatus: "PENDING",
@@ -407,7 +438,12 @@ describe("settleAttemptFailure", () => {
 
     expect(prismaMock.paymentAttempt.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "attempt-1", status: "PENDING" },
+        where: {
+          id: "attempt-1",
+          status: {
+            in: ["PENDING", "SUBMITTING", "OUTCOME_UNKNOWN"],
+          },
+        },
         data: expect.objectContaining({
           status: "FAILED",
           failureReason: "Payment declined",

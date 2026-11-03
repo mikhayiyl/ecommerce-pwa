@@ -8,7 +8,10 @@ import { siteUrl } from "@/lib/site";
 import { clientIp } from "@/lib/security/client-ip";
 import { rateLimit } from "@/lib/security/rate-limit";
 import { PAYMENT_GRACE_MINUTES, holdUntil } from "@/features/orders/release";
-import { PaymentProviderError } from "@/features/payments/errors";
+import {
+  PaymentOutcomeUnknownError,
+  PaymentProviderError,
+} from "@/features/payments/errors";
 import {
   availableMethods,
   chargeCents,
@@ -195,7 +198,9 @@ export async function startPaymentAction(
       where: {
         orderId: currentOrder.id,
         provider: "MPESA",
-        status: "PENDING",
+        status: {
+          in: ["PENDING", "SUBMITTING", "OUTCOME_UNKNOWN"],
+        },
       },
     });
 
@@ -210,6 +215,7 @@ export async function startPaymentAction(
         reference: placeholder,
         amountCents: chargeCents("MPESA", currentOrder.totalCents),
         currency: currentOrder.currency.toUpperCase(),
+        status: "SUBMITTING",
       },
     });
 
@@ -232,17 +238,35 @@ export async function startPaymentAction(
   }
 
   const createdAttempt = attempt.attempt;
+
   try {
-    const { checkoutRequestId } = await stkPush({
+    const { checkoutRequestId, merchantRequestId } = await stkPush({
       phone: msisdn,
       amountWhole: mpesaWholeAmount(order.totalCents),
       accountReference: `ORD${order.number}`,
     });
-    await prisma.paymentAttempt.update({
-      where: { id: createdAttempt.id },
-      data: { reference: checkoutRequestId },
+
+    const updated = await prisma.paymentAttempt.updateMany({
+      where: {
+        id: createdAttempt.id,
+        status: "SUBMITTING",
+      },
+      data: {
+        checkoutRequestId,
+        merchantRequestId,
+        status: "PENDING",
+      },
     });
-    await extendHold(order.id, now);
+
+    if (updated.count === 0) {
+      console.error(
+        "M-Pesa attempt changed before provider response was recorded",
+        createdAttempt.id,
+      );
+    }
+
+    await extendHold(order.id, new Date());
+
     return {
       ok: true,
       kind: "prompt",
@@ -250,13 +274,47 @@ export async function startPaymentAction(
         "Check your phone and enter your M-Pesa PIN to complete the payment.",
     };
   } catch (e) {
-    await settleAttemptFailure(placeholder, "Could not send the M-Pesa prompt");
+    if (
+      e instanceof PaymentOutcomeUnknownError ||
+      !(e instanceof PaymentProviderError)
+    ) {
+      await prisma.paymentAttempt.updateMany({
+        where: {
+          id: createdAttempt.id,
+          status: "SUBMITTING",
+        },
+        data: {
+          status: "OUTCOME_UNKNOWN",
+          outcomeUnknownAt: new Date(),
+          reviewDueAt: new Date(Date.now() + 2 * 60_000),
+        },
+      });
+
+      await extendHold(order.id, new Date());
+
+      return {
+        ok: true,
+        kind: "prompt",
+        message:
+          "We could not confirm the M-Pesa response. Do not request another prompt yet. Check your phone and payment status while we verify the transaction.",
+      };
+    }
+
+    await prisma.paymentAttempt.updateMany({
+      where: {
+        id: createdAttempt.id,
+        status: "SUBMITTING",
+      },
+      data: {
+        status: "FAILED",
+        failureReason: "Could not send the M-Pesa prompt",
+        resolvedAt: new Date(),
+      },
+    });
+
     return {
       ok: false,
-      error:
-        e instanceof PaymentProviderError
-          ? e.message
-          : "Could not send the M-Pesa prompt. Please try again.",
+      error: e.message,
     };
   }
 }

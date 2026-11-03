@@ -9,6 +9,11 @@ export type SettleResult =
   | { ok: true; orderId: string; changed: boolean; needsRefund: boolean }
   | { ok: false; reason: string };
 
+export type FailureSettleResult =
+  | { status: "NOT_FOUND" }
+  | { status: "RECONCILED"; paymentAttemptId: string }
+  | { status: "NEEDS_REVIEW"; paymentAttemptId: string };
+
 /**
  * Records a successful charge. Called from webhooks and from the status poll, so it must be idempotent:
  * the attempt is claimed with a conditional update and a repeat call changes nothing.
@@ -17,13 +22,18 @@ export type SettleResult =
  */
 export async function settleAttemptSuccess(input: {
   reference: string;
+  checkoutRequestId?: string;
   amountCents: number;
   currency: string;
   receipt?: string | null;
 }): Promise<SettleResult> {
-  const attempt = await prisma.paymentAttempt.findUnique({
-    where: { reference: input.reference },
-  });
+  const attempt = input.checkoutRequestId
+    ? await prisma.paymentAttempt.findUnique({
+        where: { checkoutRequestId: input.checkoutRequestId },
+      })
+    : await prisma.paymentAttempt.findUnique({
+        where: { reference: input.reference },
+      });
   if (!attempt) return { ok: false, reason: "Unknown payment reference" };
   if (
     attempt.amountCents !== input.amountCents ||
@@ -40,7 +50,12 @@ export async function settleAttemptSuccess(input: {
   try {
     outcome = await prisma.$transaction(async (tx) => {
       const claimed = await tx.paymentAttempt.updateMany({
-        where: { id: attempt.id, status: { in: ["PENDING", "FAILED"] } },
+        where: {
+          id: attempt.id,
+          status: {
+            in: ["PENDING", "SUBMITTING", "OUTCOME_UNKNOWN", "FAILED"],
+          },
+        },
         data: {
           status: "SUCCESS",
           receipt,
@@ -122,7 +137,9 @@ export async function settleAttemptSuccess(input: {
       const claimed = await tx.paymentAttempt.updateMany({
         where: {
           id: attempt.id,
-          status: { in: ["PENDING", "FAILED"] },
+          status: {
+            in: ["PENDING", "SUBMITTING", "OUTCOME_UNKNOWN", "FAILED"],
+          },
         },
         data: {
           status: "SUCCESS",
@@ -184,14 +201,25 @@ export async function settleAttemptSuccess(input: {
 export async function settleAttemptFailure(
   reference: string,
   reason: string,
+  checkoutRequestId?: string,
 ): Promise<void> {
-  const attempt = await prisma.paymentAttempt.findUnique({
-    where: { reference },
-  });
+  const attempt = checkoutRequestId
+    ? await prisma.paymentAttempt.findUnique({
+        where: { checkoutRequestId },
+      })
+    : await prisma.paymentAttempt.findUnique({
+        where: { reference },
+      });
+
   if (!attempt) return;
   await prisma.$transaction(async (tx) => {
     const res = await tx.paymentAttempt.updateMany({
-      where: { id: attempt.id, status: "PENDING" },
+      where: {
+        id: attempt.id,
+        status: {
+          in: ["PENDING", "SUBMITTING", "OUTCOME_UNKNOWN"],
+        },
+      },
       data: {
         status: "FAILED",
         failureReason: reason.slice(0, 200),
