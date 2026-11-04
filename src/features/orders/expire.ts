@@ -21,7 +21,9 @@ export async function expireStaleOrders(
       payments: {
         none: {
           provider: "MPESA",
-          status: "PENDING",
+          status: {
+            in: ["SUBMITTING", "PENDING", "OUTCOME_UNKNOWN"],
+          },
         },
       },
     },
@@ -46,7 +48,9 @@ export async function expireStaleOrders(
         where: {
           orderId: id,
           provider: "MPESA",
-          status: "PENDING",
+          status: {
+            in: ["SUBMITTING", "PENDING", "OUTCOME_UNKNOWN"],
+          },
         },
         select: { id: true },
       });

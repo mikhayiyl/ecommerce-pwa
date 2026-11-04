@@ -6,6 +6,9 @@ const mocks = vi.hoisted(() => ({
   rateLimit: vi.fn(),
   initializePaystack: vi.fn(),
   stkPush: vi.fn(),
+  stkQuery: vi.fn(),
+  verifyPaystack: vi.fn(),
+  settleAttemptSuccess: vi.fn(),
   settleAttemptFailure: vi.fn(),
   prisma: {
     order: {
@@ -69,20 +72,21 @@ vi.mock("@/features/payments/methods", () => ({
 vi.mock("@/features/payments/mpesa", () => ({
   normalizeKenyanPhone: () => "254712345678",
   stkPush: mocks.stkPush,
-  stkQuery: vi.fn(),
+  stkQuery: mocks.stkQuery,
 }));
 
 vi.mock("@/features/payments/paystack", () => ({
   initializePaystack: mocks.initializePaystack,
-  verifyPaystack: vi.fn(),
+  verifyPaystack: mocks.verifyPaystack,
 }));
 
 vi.mock("@/features/payments/settle", () => ({
   settleAttemptFailure: mocks.settleAttemptFailure,
-  settleAttemptSuccess: vi.fn(),
+  settleAttemptSuccess: mocks.settleAttemptSuccess,
 }));
+
 import { PaymentProviderError } from "@/features/payments/errors";
-import { startPaymentAction } from "@/actions/payments";
+import { refreshPaymentAction, startPaymentAction } from "@/actions/payments";
 
 const order = {
   id: "order-123",
@@ -290,5 +294,174 @@ describe("startPaymentAction payment retries", () => {
     });
 
     expect(mocks.settleAttemptFailure).not.toHaveBeenCalled();
+  });
+});
+
+describe("refreshPaymentAction", () => {
+  const refreshOrder = {
+    ...order,
+    paymentStatus: "PENDING",
+  };
+
+  const makeAttempt = (
+    status: "SUBMITTING" | "PENDING" | "OUTCOME_UNKNOWN",
+    reference = "ws_CO_456",
+  ) => ({
+    id: "attempt-123",
+    checkoutRequestId: "ws_CO_456",
+    orderId: "order-123",
+    provider: "MPESA",
+    reference,
+    status,
+    createdAt: new Date(Date.now() - 90_000),
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    mocks.clientIp.mockResolvedValue("127.0.0.1");
+    mocks.rateLimit.mockReturnValue(true);
+    mocks.prisma.order.findUnique.mockResolvedValue(refreshOrder);
+    mocks.prisma.paymentAttempt.findFirst
+      .mockResolvedValueOnce(makeAttempt("OUTCOME_UNKNOWN"))
+      .mockResolvedValueOnce(makeAttempt("OUTCOME_UNKNOWN"));
+
+    mocks.stkQuery.mockResolvedValue({ state: "pending" });
+    mocks.verifyPaystack.mockResolvedValue({ state: "pending" });
+    mocks.settleAttemptFailure.mockResolvedValue(undefined);
+  });
+
+  it("keeps an OUTCOME_UNKNOWN M-Pesa attempt waiting", async () => {
+    const attempt = makeAttempt("OUTCOME_UNKNOWN");
+
+    mocks.prisma.paymentAttempt.findFirst
+      .mockReset()
+      .mockResolvedValueOnce(attempt)
+      .mockResolvedValueOnce(attempt);
+
+    const result = await refreshPaymentAction("order-123");
+
+    expect(result).toMatchObject({
+      paid: false,
+      waiting: true,
+      failed: false,
+    });
+
+    expect(mocks.stkQuery).toHaveBeenCalledWith("ws_CO_456");
+    expect(mocks.settleAttemptFailure).not.toHaveBeenCalled();
+  });
+
+  it("keeps a SUBMITTING M-Pesa attempt waiting", async () => {
+    const attempt = {
+      ...makeAttempt("SUBMITTING", "pending-attempt-123"),
+      checkoutRequestId: null,
+    };
+
+    mocks.prisma.paymentAttempt.findFirst
+      .mockReset()
+      .mockResolvedValueOnce(attempt)
+      .mockResolvedValueOnce(attempt);
+
+    const result = await refreshPaymentAction("order-123");
+
+    expect(result).toMatchObject({
+      paid: false,
+      waiting: true,
+      failed: false,
+    });
+
+    expect(mocks.stkQuery).not.toHaveBeenCalled();
+    expect(mocks.settleAttemptFailure).not.toHaveBeenCalled();
+  });
+
+  it("settles an M-Pesa attempt when STK query confirms failure", async () => {
+    const attempt = makeAttempt("PENDING");
+
+    mocks.prisma.paymentAttempt.findFirst
+      .mockReset()
+      .mockResolvedValueOnce(attempt)
+      .mockResolvedValueOnce({
+        ...attempt,
+        status: "FAILED",
+        failureReason: "The M-Pesa payment was not completed",
+      });
+
+    mocks.stkQuery.mockResolvedValue({
+      state: "failed",
+      reason: "The M-Pesa payment was not completed",
+    });
+
+    const result = await refreshPaymentAction("order-123");
+
+    expect(mocks.settleAttemptFailure).toHaveBeenCalledWith(
+      "ws_CO_456",
+      "The M-Pesa payment was not completed",
+      "ws_CO_456",
+    );
+
+    expect(result).toMatchObject({
+      paid: false,
+      waiting: false,
+      failed: true,
+    });
+  });
+
+  it("waits for callback verification when STK query reports success", async () => {
+    const attempt = makeAttempt("OUTCOME_UNKNOWN");
+
+    mocks.prisma.paymentAttempt.findFirst
+      .mockReset()
+      .mockResolvedValueOnce(attempt)
+      .mockResolvedValueOnce(attempt);
+
+    mocks.stkQuery.mockResolvedValue({ state: "success" });
+
+    const result = await refreshPaymentAction("order-123");
+
+    expect(result).toMatchObject({
+      paid: false,
+      waiting: true,
+      failed: false,
+    });
+
+    expect(mocks.settleAttemptSuccess).not.toHaveBeenCalled();
+    expect(mocks.settleAttemptFailure).not.toHaveBeenCalled();
+  });
+
+  it("continues verifying Paystack payments normally", async () => {
+    const attempt = {
+      ...makeAttempt("PENDING"),
+      provider: "PAYSTACK",
+      reference: "paystack-ref-123",
+    };
+
+    mocks.prisma.paymentAttempt.findFirst
+      .mockReset()
+      .mockResolvedValueOnce(attempt)
+      .mockResolvedValueOnce({
+        ...attempt,
+        status: "FAILED",
+      });
+
+    mocks.verifyPaystack.mockResolvedValue({
+      state: "failed",
+    });
+
+    const result = await refreshPaymentAction("order-123");
+
+    expect(mocks.verifyPaystack).toHaveBeenCalledWith("paystack-ref-123");
+
+    expect(mocks.settleAttemptFailure).toHaveBeenCalledWith(
+      "paystack-ref-123",
+      "The payment was declined",
+    );
+
+    expect(mocks.stkQuery).not.toHaveBeenCalled();
+
+    expect(result).toMatchObject({
+      paid: false,
+      waiting: false,
+      failed: true,
+    });
   });
 });

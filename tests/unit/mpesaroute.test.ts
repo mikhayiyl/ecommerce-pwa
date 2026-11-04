@@ -6,6 +6,9 @@ const { prismaMock } = vi.hoisted(() => ({
       upsert: vi.fn(),
       update: vi.fn(),
     },
+    paymentAttempt: {
+      findUnique: vi.fn(),
+    },
   },
 }));
 
@@ -111,11 +114,15 @@ describe("M-Pesa webhook", () => {
       needsRefund: false,
     });
 
+    vi.mocked(prismaMock.paymentAttempt.findUnique).mockResolvedValue({
+      id: "attempt-123",
+    } as never);
     const response = await postCallback(successCallback);
 
     expect(response.status).toBe(200);
     expect(settleAttemptSuccess).toHaveBeenCalledWith({
       reference: "ws_CO_123",
+      checkoutRequestId: "ws_CO_123",
       amountCents: 125000,
       currency: "KES",
       receipt: "QJK1ABC2DE",
@@ -150,6 +157,47 @@ describe("M-Pesa webhook", () => {
         },
         data: expect.objectContaining({
           status: "RECONCILED",
+          paymentAttemptId: "attempt-123",
+        }),
+      }),
+    );
+  });
+
+  it("marks a successful settlement for review when the payment attempt cannot be linked", async () => {
+    vi.mocked(settleAttemptSuccess).mockResolvedValue({
+      ok: true,
+      orderId: "order-123",
+      changed: true,
+      needsRefund: false,
+    });
+
+    vi.mocked(prismaMock.paymentAttempt.findUnique).mockResolvedValue(
+      null as never,
+    );
+
+    const response = await postCallback(successCallback);
+
+    expect(response.status).toBe(200);
+
+    expect(prismaMock.mpesaCallback.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          checkoutRequestId_resultCode: {
+            checkoutRequestId: "ws_CO_123",
+            resultCode: 0,
+          },
+        },
+        data: expect.objectContaining({
+          status: "NEEDS_REVIEW",
+          processingStatus: "NEEDS_REVIEW",
+        }),
+      }),
+    );
+
+    expect(prismaMock.mpesaCallback.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "RECONCILED",
         }),
       }),
     );
@@ -176,6 +224,10 @@ describe("M-Pesa webhook", () => {
   });
 
   it("records a failed or cancelled payment attempt", async () => {
+    vi.mocked(settleAttemptFailure).mockResolvedValue({
+      status: "RECONCILED",
+      paymentAttemptId: "attempt-789",
+    });
     const callback = {
       Body: {
         stkCallback: {
@@ -189,11 +241,70 @@ describe("M-Pesa webhook", () => {
     const response = await postCallback(callback);
 
     expect(response.status).toBe(200);
+
     expect(settleAttemptFailure).toHaveBeenCalledWith(
       "ws_CO_789",
       "Request cancelled by user",
+      "ws_CO_789",
     );
     expect(settleAttemptSuccess).not.toHaveBeenCalled();
+    expect(prisma.mpesaCallback.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          checkoutRequestId_resultCode: {
+            checkoutRequestId: "ws_CO_789",
+            resultCode: 1032,
+          },
+        },
+        data: expect.objectContaining({
+          status: "RECONCILED",
+          processingStatus: "RECONCILED",
+          paymentAttemptId: "attempt-789",
+        }),
+      }),
+    );
+  });
+
+  it("marks a failed callback for review when settlement needs review", async () => {
+    vi.mocked(settleAttemptFailure).mockResolvedValue({
+      status: "NEEDS_REVIEW",
+      paymentAttemptId: "attempt-review-123",
+    });
+
+    const callback = {
+      Body: {
+        stkCallback: {
+          CheckoutRequestID: "ws_CO_REVIEW",
+          ResultCode: 1032,
+          ResultDesc: "Request cancelled by user",
+        },
+      },
+    };
+
+    const response = await postCallback(callback);
+
+    expect(response.status).toBe(200);
+    expect(settleAttemptFailure).toHaveBeenCalledWith(
+      "ws_CO_REVIEW",
+      "Request cancelled by user",
+      "ws_CO_REVIEW",
+    );
+
+    expect(prismaMock.mpesaCallback.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          checkoutRequestId_resultCode: {
+            checkoutRequestId: "ws_CO_REVIEW",
+            resultCode: 1032,
+          },
+        },
+        data: expect.objectContaining({
+          status: "NEEDS_REVIEW",
+          processingStatus: "NEEDS_REVIEW",
+          paymentAttemptId: "attempt-review-123",
+        }),
+      }),
+    );
   });
 
   it("does not settle a callback with a null result code as success", async () => {
@@ -299,6 +410,44 @@ describe("M-Pesa webhook", () => {
       }),
     );
     expect(settleAttemptSuccess).not.toHaveBeenCalled();
+    expect(prisma.mpesaCallback.update).not.toHaveBeenCalled();
+  });
+
+  it("preserves unmatched failed callback evidence for later reconciliation", async () => {
+    vi.mocked(settleAttemptFailure).mockResolvedValue({
+      status: "NOT_FOUND",
+    });
+
+    const callback = {
+      Body: {
+        stkCallback: {
+          CheckoutRequestID: "ws_CO_unmatched_failure",
+          ResultCode: 1032,
+          ResultDesc: "Request cancelled by user",
+        },
+      },
+    };
+
+    const response = await postCallback(callback);
+
+    expect(response.status).toBe(200);
+    expect(settleAttemptFailure).toHaveBeenCalledWith(
+      "ws_CO_unmatched_failure",
+      "Request cancelled by user",
+      "ws_CO_unmatched_failure",
+    );
+
+    expect(prisma.mpesaCallback.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          checkoutRequestId: "ws_CO_unmatched_failure",
+          resultCode: 1032,
+          status: "UNMATCHED",
+        }),
+        update: {},
+      }),
+    );
+
     expect(prisma.mpesaCallback.update).not.toHaveBeenCalled();
   });
 });

@@ -196,13 +196,12 @@ export async function settleAttemptSuccess(input: {
   if (outcome.changed) await sendOrderConfirmation(attempt.orderId);
   return { ok: true, orderId: attempt.orderId, ...outcome };
 }
-
 /** Records a failed or cancelled attempt so the customer can try again. Safe to call repeatedly. */
 export async function settleAttemptFailure(
   reference: string,
   reason: string,
   checkoutRequestId?: string,
-): Promise<void> {
+): Promise<FailureSettleResult> {
   const attempt = checkoutRequestId
     ? await prisma.paymentAttempt.findUnique({
         where: { checkoutRequestId },
@@ -211,8 +210,11 @@ export async function settleAttemptFailure(
         where: { reference },
       });
 
-  if (!attempt) return;
-  await prisma.$transaction(async (tx) => {
+  if (!attempt) {
+    return { status: "NOT_FOUND" };
+  }
+
+  return prisma.$transaction(async (tx) => {
     const res = await tx.paymentAttempt.updateMany({
       where: {
         id: attempt.id,
@@ -226,15 +228,26 @@ export async function settleAttemptFailure(
         resolvedAt: new Date(),
       },
     });
-    if (res.count > 0) {
-      await tx.order.updateMany({
-        where: {
-          id: attempt.orderId,
-          status: "PENDING",
-          paymentStatus: "UNPAID",
-        },
-        data: { paymentStatus: "FAILED" },
-      });
+
+    if (res.count === 0) {
+      return {
+        status: "NEEDS_REVIEW",
+        paymentAttemptId: attempt.id,
+      };
     }
+
+    await tx.order.updateMany({
+      where: {
+        id: attempt.orderId,
+        status: "PENDING",
+        paymentStatus: "UNPAID",
+      },
+      data: { paymentStatus: "FAILED" },
+    });
+
+    return {
+      status: "RECONCILED",
+      paymentAttemptId: attempt.id,
+    };
   });
 }

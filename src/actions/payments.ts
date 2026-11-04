@@ -356,7 +356,12 @@ export async function refreshPaymentAction(
 
   if (order.paymentStatus !== "PAID") {
     const attempt = await prisma.paymentAttempt.findFirst({
-      where: { orderId, status: "PENDING" },
+      where: {
+        orderId,
+        status: {
+          in: ["PENDING", "SUBMITTING", "OUTCOME_UNKNOWN"],
+        },
+      },
       orderBy: { createdAt: "desc" },
     });
     if (attempt) {
@@ -378,15 +383,11 @@ export async function refreshPaymentAction(
               "The payment was declined",
             );
           }
-        } else if (attempt.reference.startsWith("pending-")) {
-          // The prompt request never returned a CheckoutRequestID, so nothing can arrive for it.
-          if (ageMs > 120_000)
-            await settleAttemptFailure(
-              attempt.reference,
-              "The M-Pesa prompt was not sent",
-            );
+        } else if (!attempt.checkoutRequestId) {
+          // No CheckoutRequestID is available for querying.
+          // Keep the attempt unresolved until reconciliation confirms its outcome.
         } else if (ageMs > 60_000) {
-          const q = await stkQuery(attempt.reference);
+          const q = await stkQuery(attempt.checkoutRequestId);
 
           if (q.state === "success") {
             // STK query confirms the outcome but does not provide
@@ -400,6 +401,7 @@ export async function refreshPaymentAction(
             await settleAttemptFailure(
               attempt.reference,
               q.reason || "The M-Pesa payment was not completed",
+              attempt.checkoutRequestId,
             );
           }
         }
@@ -416,7 +418,9 @@ export async function refreshPaymentAction(
     orderBy: { createdAt: "desc" },
   });
   const paid = order.paymentStatus === "PAID";
-  const waiting = !paid && latest?.status === "PENDING";
+  const waiting =
+    !paid &&
+    ["PENDING", "SUBMITTING", "OUTCOME_UNKNOWN"].includes(latest?.status ?? "");
   return {
     orderStatus: order.status,
     paid,

@@ -75,7 +75,9 @@ describe("expireStaleOrders", () => {
       where: {
         orderId: "order-123",
         provider: "MPESA",
-        status: "PENDING",
+        status: {
+          in: ["SUBMITTING", "PENDING", "OUTCOME_UNKNOWN"],
+        },
       },
       select: { id: true },
     });
@@ -112,4 +114,20 @@ describe("expireStaleOrders", () => {
     expect(mocks.tx.order.updateMany).not.toHaveBeenCalled();
     expect(mocks.releaseOrderReservation).not.toHaveBeenCalled();
   });
+
+  it.each(["SUBMITTING", "PENDING", "OUTCOME_UNKNOWN"])(
+    "does not cancel or release stock when an M-Pesa attempt is %s",
+    async (status) => {
+      mocks.tx.paymentAttempt.findFirst.mockResolvedValue({
+        id: "attempt-123",
+        status,
+      });
+
+      const result = await expireStaleOrders(now);
+
+      expect(result).toBe(0);
+      expect(mocks.tx.order.updateMany).not.toHaveBeenCalled();
+      expect(mocks.releaseOrderReservation).not.toHaveBeenCalled();
+    },
+  );
 });

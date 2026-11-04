@@ -138,6 +138,47 @@ describe("settleAttemptSuccess", () => {
     });
   });
 
+  it("settles an M-Pesa attempt with an unknown outcome", async () => {
+    prismaMock.paymentAttempt.findUnique.mockResolvedValue({
+      ...attempt,
+      provider: "MPESA",
+      reference: "local-ref-unknown",
+      checkoutRequestId: "ws_CO_unknown",
+      currency: "KES",
+      status: "OUTCOME_UNKNOWN",
+    });
+
+    const result = await settleAttemptSuccess({
+      reference: "ws_CO_unknown",
+      checkoutRequestId: "ws_CO_unknown",
+      amountCents: 5000,
+      currency: "KES",
+      receipt: "UNKNOWN123",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      orderId: "order-1",
+      changed: true,
+      needsRefund: false,
+    });
+
+    expect(prismaMock.paymentAttempt.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: "attempt-1",
+          status: {
+            in: ["PENDING", "SUBMITTING", "OUTCOME_UNKNOWN", "FAILED"],
+          },
+        },
+        data: expect.objectContaining({
+          status: "SUCCESS",
+          receipt: "UNKNOWN123",
+        }),
+      }),
+    );
+  });
+
   it("flags a second payment for a refund when the order is already paid", async () => {
     prismaMock.order.updateMany.mockResolvedValue({ count: 0 });
     prismaMock.order.findUniqueOrThrow.mockResolvedValue({
@@ -461,12 +502,69 @@ describe("settleAttemptFailure", () => {
     });
   });
 
+  it("fails an M-Pesa attempt with an unknown outcome using its Checkout Request ID", async () => {
+    prismaMock.paymentAttempt.findUnique.mockResolvedValue({
+      ...attempt,
+      provider: "MPESA",
+      reference: "local-ref-unknown",
+      checkoutRequestId: "ws_CO_fail_unknown",
+      currency: "KES",
+      status: "OUTCOME_UNKNOWN",
+    });
+
+    const result = await settleAttemptFailure(
+      "ws_CO_fail_unknown",
+      "Request cancelled by user",
+      "ws_CO_fail_unknown",
+    );
+
+    expect(prismaMock.paymentAttempt.findUnique).toHaveBeenCalledWith({
+      where: { checkoutRequestId: "ws_CO_fail_unknown" },
+    });
+
+    expect(result).toEqual({
+      status: "RECONCILED",
+      paymentAttemptId: "attempt-1",
+    });
+
+    expect(prismaMock.paymentAttempt.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: "attempt-1",
+          status: {
+            in: ["PENDING", "SUBMITTING", "OUTCOME_UNKNOWN"],
+          },
+        },
+        data: expect.objectContaining({
+          status: "FAILED",
+          failureReason: "Request cancelled by user",
+        }),
+      }),
+    );
+  });
+
   it("does not change the order when the attempt is already successful", async () => {
     prismaMock.paymentAttempt.updateMany.mockResolvedValue({ count: 0 });
 
     await settleAttemptFailure("ref-1", "Delayed failure callback");
 
     expect(prismaMock.paymentAttempt.updateMany).toHaveBeenCalled();
+    expect(prismaMock.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("returns NEEDS_REVIEW when the attempt cannot be marked failed", async () => {
+    prismaMock.paymentAttempt.updateMany.mockResolvedValue({ count: 0 });
+
+    const result = await settleAttemptFailure(
+      "ref-1",
+      "Delayed failure callback",
+    );
+
+    expect(result).toEqual({
+      status: "NEEDS_REVIEW",
+      paymentAttemptId: "attempt-1",
+    });
+
     expect(prismaMock.order.updateMany).not.toHaveBeenCalled();
   });
 

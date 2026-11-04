@@ -76,7 +76,35 @@ export async function POST(
       currency: "KES",
       receipt: cb.receipt,
     });
+
     if (result.ok) {
+      const attempt = await prisma.paymentAttempt.findUnique({
+        where: { checkoutRequestId: cb.checkoutRequestId },
+        select: { id: true },
+      });
+
+      if (!attempt) {
+        console.error(
+          "M-Pesa settlement succeeded but payment attempt could not be linked:",
+          cb.checkoutRequestId,
+        );
+
+        await prisma.mpesaCallback.update({
+          where: {
+            checkoutRequestId_resultCode: {
+              checkoutRequestId: cb.checkoutRequestId,
+              resultCode: cb.resultCode,
+            },
+          },
+          data: {
+            status: "NEEDS_REVIEW",
+            processingStatus: "NEEDS_REVIEW",
+          },
+        });
+
+        return Response.json(ACK);
+      }
+
       await prisma.mpesaCallback.update({
         where: {
           checkoutRequestId_resultCode: {
@@ -87,12 +115,7 @@ export async function POST(
         data: {
           status: "RECONCILED",
           processingStatus: "RECONCILED",
-          paymentAttemptId: (
-            await prisma.paymentAttempt.findUnique({
-              where: { checkoutRequestId: cb.checkoutRequestId },
-              select: { id: true },
-            })
-          )?.id,
+          paymentAttemptId: attempt.id,
           reconciledAt: new Date(),
         },
       });
@@ -104,13 +127,42 @@ export async function POST(
       );
     }
   } else {
-    // settleAttemptFailure returns void, so we cannot prove that an
-    // existing attempt was updated. Leave the callback for reconciliation.
-    await settleAttemptFailure(
+    const result = await settleAttemptFailure(
       cb.checkoutRequestId,
       cb.resultDesc || "The M-Pesa payment was not completed",
       cb.checkoutRequestId,
     );
+
+    if (result.status === "RECONCILED") {
+      await prisma.mpesaCallback.update({
+        where: {
+          checkoutRequestId_resultCode: {
+            checkoutRequestId: cb.checkoutRequestId,
+            resultCode: cb.resultCode,
+          },
+        },
+        data: {
+          status: "RECONCILED",
+          processingStatus: "RECONCILED",
+          paymentAttemptId: result.paymentAttemptId,
+          reconciledAt: new Date(),
+        },
+      });
+    } else if (result.status === "NEEDS_REVIEW") {
+      await prisma.mpesaCallback.update({
+        where: {
+          checkoutRequestId_resultCode: {
+            checkoutRequestId: cb.checkoutRequestId,
+            resultCode: cb.resultCode,
+          },
+        },
+        data: {
+          status: "NEEDS_REVIEW",
+          processingStatus: "NEEDS_REVIEW",
+          paymentAttemptId: result.paymentAttemptId,
+        },
+      });
+    }
   }
 
   return Response.json(ACK);
